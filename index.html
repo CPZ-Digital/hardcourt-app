@@ -1,0 +1,1127 @@
+<title>Hardcourt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ponytail: single dark-first identity by design — a HUD/broadcast scoreboard doesn't get a light mode, same way a stadium jumbotron doesn't */
+:root{
+  --bg:#0a0d10;
+  --bg-grid:#0d1114;
+  --surface:#12171b;
+  --surface-2:#171d22;
+  --line:#263139;
+  --line-bright:#3a4750;
+  --ink:#e8f0ee;
+  --ink-dim:#6f8189;
+  --accent:#c8ff3d;
+  --accent-dim:#7a9628;
+  --accent-ink:#0a0d10;
+  --make:#3dffb0;
+  --miss:#ff4d5e;
+  --court:#ff8a3d;
+}
+
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  min-height:100vh;
+  background-image:
+    linear-gradient(var(--bg-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  background-size:34px 34px;
+  background-position:-1px -1px;
+}
+::selection{background:var(--accent);color:var(--accent-ink);}
+
+.display{
+  font-family:'Rajdhani',sans-serif;
+  font-weight:700;
+  letter-spacing:0.01em;
+  text-wrap:balance;
+  text-transform:uppercase;
+}
+.num{
+  font-family:'JetBrains Mono',monospace;
+  font-variant-numeric:tabular-nums;
+}
+
+header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:16px 24px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg, var(--surface), var(--bg));
+  position:sticky;
+  top:0;
+  z-index:10;
+  flex-wrap:wrap;
+}
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.brand .mark{
+  width:11px;height:11px;
+  background:var(--accent);
+  box-shadow:0 0 10px 1px var(--accent);
+  flex:none;
+  animation:blink 2.6s ease-in-out infinite;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.35;}}
+.brand h1{
+  font-family:'Rajdhani',sans-serif;
+  font-size:26px;
+  font-weight:700;
+  margin:0;
+  letter-spacing:0.06em;
+  line-height:1;
+  text-transform:uppercase;
+}
+.brand small{
+  color:var(--ink-dim);
+  font-size:11.5px;
+  text-transform:uppercase;
+  letter-spacing:0.1em;
+  font-family:'JetBrains Mono';
+  border-left:1px solid var(--line);
+  padding-left:12px;
+}
+nav{display:flex;gap:2px;background:var(--surface-2);padding:3px;border:1px solid var(--line);}
+nav button{
+  font-family:'JetBrains Mono';
+  font-size:12px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  padding:8px 14px;
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--ink-dim);
+  cursor:pointer;
+}
+nav button.active{
+  background:var(--accent);
+  color:var(--accent-ink);
+}
+
+main{
+  max-width:1080px;
+  margin:0 auto;
+  padding:28px 24px 80px;
+}
+.view{display:none;}
+.view.active{display:block;}
+
+.panel{
+  background:var(--surface);
+  border:1px solid var(--line);
+  padding:20px;
+  position:relative;
+}
+.panel::before, .panel::after{
+  content:"";
+  position:absolute;
+  width:9px;height:9px;
+  border-top:2px solid var(--accent-dim);
+  border-left:2px solid var(--accent-dim);
+  top:-1px;left:-1px;
+}
+.panel::after{
+  top:auto;left:auto;bottom:-1px;right:-1px;
+  border-top:none;border-left:none;
+  border-bottom:2px solid var(--accent-dim);
+  border-right:2px solid var(--accent-dim);
+}
+.panel + .panel{margin-top:16px;}
+.panel h2{
+  font-family:'Rajdhani';
+  font-size:22px;
+  font-weight:700;
+  margin:0 0 14px;
+  letter-spacing:0.02em;
+  text-transform:uppercase;
+}
+.eyebrow{
+  text-transform:uppercase;
+  letter-spacing:0.12em;
+  font-size:10.5px;
+  font-weight:600;
+  font-family:'JetBrains Mono';
+  color:var(--accent);
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:10px;
+}
+.eyebrow::before{content:"";width:14px;height:1px;background:var(--accent);}
+
+.field{margin-bottom:12px;}
+.field label{
+  display:block;
+  font-size:11.5px;
+  font-weight:600;
+  color:var(--ink-dim);
+  margin-bottom:5px;
+  font-family:'JetBrains Mono';
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+}
+input[type=text],input[type=number],select{
+  width:100%;
+  font-family:'JetBrains Mono';
+  font-size:14px;
+  padding:10px 11px;
+  border:1px solid var(--line);
+  background:var(--bg);
+  color:var(--ink);
+}
+input:focus,select:focus,button:focus-visible{
+  outline:1px solid var(--accent);
+  outline-offset:1px;
+  border-color:var(--accent);
+}
+
+.btn{
+  font-family:'JetBrains Mono';
+  font-weight:600;
+  font-size:12.5px;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  padding:11px 16px;
+  border:1px solid var(--line);
+  background:var(--surface-2);
+  color:var(--ink);
+  cursor:pointer;
+}
+.btn.primary{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:var(--accent-ink);
+  box-shadow:0 0 16px -4px var(--accent);
+}
+.btn.ghost{background:transparent;}
+.btn:disabled{opacity:0.35;cursor:not-allowed;box-shadow:none;}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+
+.roster-list{display:flex;flex-direction:column;gap:6px;margin-top:14px;}
+.roster-row{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 10px;background:var(--surface-2);border:1px solid var(--line);border-left:2px solid var(--accent-dim);
+}
+.roster-row .jersey{
+  font-family:'JetBrains Mono';font-weight:700;font-size:12.5px;
+  width:26px;height:26px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);border:1px solid var(--line);flex:none;
+}
+.roster-row .name{flex:1;font-weight:500;font-size:14.5px;}
+.roster-row button{background:none;border:none;color:var(--miss);cursor:pointer;font-size:11px;padding:4px 8px;font-family:'JetBrains Mono';text-transform:uppercase;letter-spacing:0.05em;}
+
+/* SCORER */
+.scorer-head{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:16px;flex-wrap:wrap;gap:12px;
+}
+.clock{
+  font-family:'JetBrains Mono';font-size:34px;font-weight:700;
+  line-height:1;color:var(--accent);
+  text-shadow:0 0 18px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.oncourt{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  gap:10px;
+}
+.player-card{
+  background:var(--surface-2);
+  border:1px solid var(--line);
+  padding:12px;
+}
+.player-card .pname{
+  display:flex;align-items:center;gap:8px;margin-bottom:10px;
+}
+.player-card .jersey{
+  font-family:'JetBrains Mono';font-weight:700;font-size:12px;
+  width:24px;height:24px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);border:1px solid var(--line);flex:none;
+}
+.player-card .pname strong{font-size:14px;font-weight:600;font-family:'Rajdhani';text-transform:uppercase;letter-spacing:0.02em;}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+.stat-btn{
+  font-family:'JetBrains Mono';
+  font-size:11px;font-weight:700;
+  padding:9px 6px;border:1px solid var(--line);
+  background:var(--bg);color:var(--ink);cursor:pointer;
+  text-align:center;text-transform:uppercase;
+}
+.stat-btn:active{transform:scale(0.96);}
+.stat-btn.make{color:var(--make);border-color:color-mix(in srgb, var(--make) 40%, var(--line));}
+.stat-btn.miss{color:var(--miss);border-color:color-mix(in srgb, var(--miss) 40%, var(--line));}
+.live-line{
+  margin-top:8px;font-size:11px;color:var(--ink-dim);
+  font-family:'JetBrains Mono';font-variant-numeric:tabular-nums;
+  border-top:1px dashed var(--line);padding-top:8px;
+}
+.undo-bar{
+  margin-top:16px;display:flex;justify-content:space-between;
+  align-items:center;flex-wrap:wrap;gap:10px;
+}
+#log{font-size:11.5px;color:var(--ink-dim);font-family:'JetBrains Mono';}
+
+/* RANKINGS */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{
+  text-align:right;font-family:'JetBrains Mono';font-weight:600;
+  font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;
+  color:var(--ink-dim);padding:9px 10px;border-bottom:1px solid var(--line);
+  background:var(--surface-2);
+}
+th:first-child,th:nth-child(2){text-align:left;}
+td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;
+  font-family:'JetBrains Mono';font-variant-numeric:tabular-nums;}
+td:first-child,td:nth-child(2){text-align:left;font-family:'Rajdhani';font-size:15px;font-weight:600;letter-spacing:0.01em;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--surface-2);}
+.rank-num{color:var(--ink-dim);width:26px;display:inline-block;}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);}
+table{border:none;}
+th.sortable{cursor:pointer;}
+th.sortable.active{color:var(--accent);}
+
+.empty{
+  text-align:center;color:var(--ink-dim);font-size:13px;
+  padding:40px 20px;font-family:'JetBrains Mono';
+}
+.empty .display{font-size:24px;color:var(--ink);display:block;margin-bottom:6px;font-family:'Rajdhani';}
+
+footer{
+  text-align:center;font-size:10.5px;color:var(--ink-dim);
+  padding:24px;font-family:'JetBrains Mono';
+  text-transform:uppercase;letter-spacing:0.08em;
+}
+
+@media (prefers-reduced-motion: reduce){*, .brand .mark{animation:none!important;transition:none!important;}}
+
+@media print{
+  body.print-athlete{background:#fff;background-image:none;}
+  body.print-athlete header, body.print-athlete footer,
+  body.print-athlete #view-setup, body.print-athlete #view-games,
+  body.print-athlete #view-scorer, body.print-athlete #view-rankings,
+  body.print-athlete #view-draw,
+  body.print-athlete #athlete-select, body.print-athlete #btn-export-pdf{
+    display:none!important;
+  }
+  body.print-athlete #view-athlete{display:block!important;}
+  body.print-athlete .panel{border:1px solid #ccc;background:#fff;box-shadow:none;}
+  body.print-athlete .panel::before, body.print-athlete .panel::after{display:none;}
+  body.print-athlete, body.print-athlete .ink, body.print-athlete .display{color:#111!important;}
+  body.print-athlete *{color:#111!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body.print-athlete .num{color:#111!important;text-shadow:none!important;}
+}
+</style>
+
+<header>
+  <div class="brand">
+    <span class="mark"></span>
+    <div>
+      <h1>Hardcourt</h1>
+    </div>
+    <small id="team-tag">— sem time selecionado</small>
+  </div>
+  <nav>
+    <button data-view="setup" class="active">Elenco</button>
+    <button data-view="games">Jogos</button>
+    <button data-view="scorer">Súmula</button>
+    <button data-view="rankings">Rankings</button>
+    <button data-view="athlete">Atleta</button>
+    <button data-view="draw">Sorteio</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- SETUP -->
+  <section class="view active" id="view-setup">
+    <div class="panel">
+      <span class="eyebrow">Time</span>
+      <h2>Selecionar ou criar time</h2>
+      <div class="row">
+        <select id="team-select" style="max-width:260px;"></select>
+        <button class="btn" id="btn-new-team">+ Novo time</button>
+        <button class="btn ghost" id="btn-demo-data">Carregar dados de demonstração</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <span class="eyebrow">Elenco</span>
+      <h2>Jogadores</h2>
+      <div class="row">
+        <input type="text" id="player-name" placeholder="Nome do jogador" style="flex:2;min-width:160px;">
+        <input type="number" id="player-num" placeholder="Nº" style="max-width:80px;">
+        <button class="btn primary" id="btn-add-player">Adicionar</button>
+      </div>
+      <div class="roster-list" id="roster-list"></div>
+    </div>
+  </section>
+
+  <!-- GAMES -->
+  <section class="view" id="view-games">
+    <div class="panel">
+      <span class="eyebrow">Temporada</span>
+      <h2>Jogos</h2>
+      <div class="row">
+        <input type="text" id="opponent-name" placeholder="Time adversário" style="flex:2;min-width:180px;">
+        <button class="btn primary" id="btn-start-game">Iniciar novo jogo</button>
+      </div>
+      <div class="roster-list" id="games-list" style="margin-top:16px;"></div>
+    </div>
+  </section>
+
+  <!-- SCORER -->
+  <section class="view" id="view-scorer">
+    <div class="panel">
+      <div id="scorer-empty" class="empty">
+        <span class="display">Nenhum jogo em andamento</span>
+        Vá em "Jogos" e inicie uma partida pra começar a registrar.
+      </div>
+      <div id="scorer-body" style="display:none;">
+        <div class="scorer-head">
+          <div>
+            <span class="eyebrow" id="scorer-opponent">vs —</span>
+            <h2 style="margin:0;">Registro ao vivo</h2>
+          </div>
+          <div class="clock num" id="scorer-total">0 <span style="font-size:20px;color:var(--ink-dim);">PTS</span></div>
+        </div>
+        <div class="oncourt" id="oncourt"></div>
+        <div class="undo-bar">
+          <button class="btn ghost" id="btn-undo">↩ Desfazer última</button>
+          <div id="log">—</div>
+        </div>
+        <div class="row" style="margin-top:18px;">
+          <button class="btn primary" id="btn-finish-game">Encerrar jogo</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RANKINGS -->
+  <section class="view" id="view-rankings">
+    <div class="panel">
+      <span class="eyebrow">Temporada</span>
+      <h2>Rankings do time</h2>
+      <div class="table-wrap">
+        <table id="rankings-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Jogador</th>
+              <th class="sortable" data-key="gp" title="Jogos disputados">Jogos</th>
+              <th class="sortable active" data-key="ppg" title="Pontos por jogo">PPG</th>
+              <th class="sortable" data-key="rpg" title="Rebotes por jogo">RPG</th>
+              <th class="sortable" data-key="apg" title="Assistências por jogo">APG</th>
+              <th class="sortable" data-key="spg" title="Roubos de bola por jogo">SPG</th>
+              <th class="sortable" data-key="pts" title="Pontos na temporada">Pontos</th>
+              <th class="sortable" data-key="reb" title="Rebotes na temporada">Rebotes</th>
+              <th class="sortable" data-key="ast" title="Assistências na temporada">Assist.</th>
+              <th class="sortable" data-key="fg3" title="Cestas de 3 pontos convertidas">3PM</th>
+              <th class="sortable" data-key="stl" title="Roubos de bola na temporada">Roubos</th>
+            </tr>
+          </thead>
+          <tbody id="rankings-body"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">clique num atleta pra abrir o perfil individual →</div>
+    </div>
+  </section>
+
+  <!-- ATHLETE PROFILE -->
+  <section class="view" id="view-athlete">
+    <div class="panel">
+      <span class="eyebrow">Perfil</span>
+      <h2>Ficha do atleta</h2>
+      <div class="row">
+        <select id="athlete-select" style="max-width:280px;"></select>
+        <button class="btn" id="btn-export-pdf">Exportar relatório em PDF</button>
+      </div>
+      <div id="athlete-body" style="margin-top:18px;"></div>
+    </div>
+  </section>
+
+  <!-- TEAM DRAW -->
+  <section class="view" id="view-draw">
+    <div class="panel">
+      <span class="eyebrow">Treino / Rachão</span>
+      <h2>Sorteio de times</h2>
+      <div class="row">
+        <div class="field" style="margin:0;min-width:140px;">
+          <label>Número de times</label>
+          <input type="number" id="draw-count" value="2" min="2" max="6">
+        </div>
+        <div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
+            <input type="checkbox" id="draw-balance" style="width:auto;" checked>
+            Equilibrar por desempenho (PPG)
+          </label>
+        </div>
+        <button class="btn primary" id="btn-draw" style="align-self:flex-end;">Sortear times</button>
+      </div>
+      <div id="draw-result" style="margin-top:20px;"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>Hardcourt — beta · dados salvos neste dispositivo</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  const store = {
+    read(){ try{ return JSON.parse(localStorage.getItem('hardcourt-data')||'{}'); }catch(e){ return {}; } },
+    write(d){ try{ localStorage.setItem('hardcourt-data', JSON.stringify(d)); }catch(e){} }
+  };
+
+  const STAT_NAMES = { pts:'pontos', fg3:'cesta de 3', reb:'rebote', ast:'assistência', stl:'roubo de bola' };
+
+  // ponytail: lista única controla o formulário de ficha física e a exibição — trocar de esporte é só editar isto
+  const ATTR_FIELDS = [
+    { key:'position', label:'Posição', type:'select', options:['Armador','Ala-armador','Ala','Ala-pivô','Pivô'] },
+    { key:'birthdate', label:'Nascimento', type:'date' },
+    { key:'height', label:'Altura (cm)', type:'number' },
+    { key:'weight', label:'Peso (kg)', type:'number' },
+    { key:'wingspan', label:'Envergadura (cm)', type:'number' },
+    { key:'vertical', label:'Impulsão vertical (cm)', type:'number' },
+    { key:'sprint', label:'Velocidade 20m (s)', type:'number', step:'0.01' },
+  ];
+  function attrAge(birthdate){
+    if(!birthdate) return null;
+    const b = new Date(birthdate), now = new Date();
+    let age = now.getFullYear()-b.getFullYear();
+    if(now.getMonth()<b.getMonth() || (now.getMonth()===b.getMonth() && now.getDate()<b.getDate())) age--;
+    return age;
+  }
+
+  let db = store.read();
+  db.teams = db.teams || {};
+  let currentTeamId = db.lastTeam && db.teams[db.lastTeam] ? db.lastTeam : null;
+  let currentGameId = null;
+
+  function save(){ store.write(db); }
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+  function team(){ return currentTeamId ? db.teams[currentTeamId] : null; }
+
+  function newTeam(name){
+    const id = uid();
+    db.teams[id] = { id, name, players: [], games: [] };
+    currentTeamId = id; db.lastTeam = id;
+    save(); renderAll();
+  }
+
+  // ---------- VIEWS ----------
+  const views = document.querySelectorAll('.view');
+  const navButtons = document.querySelectorAll('nav button');
+  navButtons.forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
+  function switchView(name){
+    views.forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+    navButtons.forEach(b=>b.classList.toggle('active', b.dataset.view===name));
+    if(name==='rankings') renderRankings();
+    if(name==='games') renderGames();
+    if(name==='scorer') renderScorer();
+    if(name==='athlete'){ renderAthleteSelect(); renderAthlete(document.getElementById('athlete-select').value); }
+  }
+
+  // ---------- TEAM SELECT ----------
+  const teamSelect = document.getElementById('team-select');
+  document.getElementById('btn-new-team').addEventListener('click', ()=>{
+    const name = prompt('Nome do time:');
+    if(name && name.trim()) newTeam(name.trim());
+  });
+  teamSelect.addEventListener('change', ()=>{
+    currentTeamId = teamSelect.value || null;
+    db.lastTeam = currentTeamId;
+    save(); renderAll();
+  });
+
+  document.getElementById('btn-demo-data').addEventListener('click', loadDemoData);
+
+  function loadDemoData(){
+    const rosterA = [
+      ['Lucas Ferreira',7,{position:'Armador',birthdate:'2001-03-14',height:188,weight:82,wingspan:193,vertical:58,sprint:2.98}],
+      ['Bruno Alves',23,{position:'Ala',birthdate:'1999-07-22',height:198,weight:94,wingspan:205,vertical:64,sprint:3.05}],
+      ['Rafael Souza',11,{position:'Ala-armador',birthdate:'2000-11-02',height:192,weight:88,wingspan:196,vertical:60,sprint:3.02}],
+      ['Thiago Lima',5,{position:'Armador',birthdate:'2002-05-30',height:183,weight:78,wingspan:186,vertical:55,sprint:2.91}],
+      ['Gustavo Rocha',44,{position:'Pivô',birthdate:'1998-01-18',height:208,weight:108,wingspan:218,vertical:52,sprint:3.4}],
+    ];
+    const rosterB = [
+      ['Diego Martins',10,{position:'Armador',birthdate:'2000-09-09',height:186,weight:80,wingspan:190,vertical:57,sprint:2.95}],
+      ['Fernando Costa',33,{position:'Ala-pivô',birthdate:'1999-02-14',height:203,weight:100,wingspan:212,vertical:56,sprint:3.2}],
+      ['Marcelo Dias',9,{position:'Ala',birthdate:'2001-06-25',height:196,weight:90,wingspan:200,vertical:61,sprint:3.0}],
+      ['Rodrigo Nunes',15,{position:'Ala-armador',birthdate:'2000-12-03',height:191,weight:86,wingspan:194,vertical:59,sprint:2.99}],
+      ['André Pinto',21,{position:'Pivô',birthdate:'1997-10-11',height:210,weight:112,wingspan:220,vertical:50,sprint:3.45}],
+    ];
+
+    function makeTeam(name, roster){
+      const id = uid();
+      const players = roster.map(([name,num,attrs])=>({ id: uid(), name, num: String(num), attrs: attrs||{} }));
+      db.teams[id] = { id, name, players, games: [] };
+      return db.teams[id];
+    }
+
+    const teamA = makeTeam('Águias FC', rosterA);
+    const teamB = makeTeam('Furacão BC', rosterB);
+
+    // jogo 1: Águias vs Furacão, com estatísticas variadas
+    function makeGame(team, opponent, statLines){
+      const stats = {};
+      const log = [];
+      team.players.forEach((p,i)=>{
+        const line = statLines[i] || {pts:0,reb:0,ast:0,fg3:0,stl:0};
+        stats[p.id] = { pts: line.pts, reb: line.reb, ast: line.ast, fg3: line.fg3||0, stl: line.stl||0 };
+        log.push({ pid:p.id, changes:{pts:line.pts}, ts: Date.now() });
+      });
+      const game = {
+        id: uid(), opponent, date: new Date().toISOString(),
+        finished: true, stats, log
+      };
+      team.games.push(game);
+      return game;
+    }
+
+    makeGame(teamA, 'Furacão BC', [
+      {pts:24,reb:6,ast:5,fg3:2,stl:2},
+      {pts:18,reb:9,ast:2,fg3:1,stl:1},
+      {pts:12,reb:3,ast:7,fg3:0,stl:3},
+      {pts:9,reb:4,ast:1,fg3:1,stl:0},
+      {pts:6,reb:11,ast:0,fg3:0,stl:1},
+    ]);
+    makeGame(teamA, 'Tubarões SC', [
+      {pts:16,reb:5,ast:8,fg3:1,stl:1},
+      {pts:22,reb:7,ast:1,fg3:3,stl:0},
+      {pts:14,reb:2,ast:4,fg3:2,stl:2},
+      {pts:5,reb:6,ast:2,fg3:0,stl:1},
+      {pts:8,reb:9,ast:1,fg3:0,stl:0},
+    ]);
+
+    makeGame(teamB, 'Águias FC', [
+      {pts:20,reb:8,ast:3,fg3:2,stl:1},
+      {pts:15,reb:4,ast:6,fg3:1,stl:2},
+      {pts:11,reb:5,ast:2,fg3:0,stl:0},
+      {pts:19,reb:3,ast:4,fg3:3,stl:1},
+      {pts:7,reb:10,ast:1,fg3:0,stl:3},
+    ]);
+
+    currentTeamId = teamA.id;
+    db.lastTeam = currentTeamId;
+    save(); renderAll();
+    switchView('rankings');
+  }
+
+  function renderTeamSelect(){
+    const teams = Object.values(db.teams);
+    teamSelect.innerHTML = teams.length
+      ? teams.map(t=>`<option value="${t.id}" ${t.id===currentTeamId?'selected':''}>${escapeHtml(t.name)}</option>`).join('')
+      : `<option value="">— nenhum time —</option>`;
+    document.getElementById('team-tag').textContent = team() ? '— ' + team().name : '— sem time selecionado';
+  }
+
+  // ---------- ROSTER ----------
+  document.getElementById('btn-add-player').addEventListener('click', ()=>{
+    const t = team();
+    if(!t){ alert('Crie ou selecione um time primeiro.'); return; }
+    const name = document.getElementById('player-name').value.trim();
+    const num = document.getElementById('player-num').value.trim() || '—';
+    if(!name) return;
+    t.players.push({ id: uid(), name, num, attrs:{} });
+    document.getElementById('player-name').value = '';
+    document.getElementById('player-num').value = '';
+    save(); renderRoster();
+  });
+
+  let openAttrsPid = null;
+
+  function renderRoster(){
+    const t = team();
+    const list = document.getElementById('roster-list');
+    if(!t || !t.players.length){
+      list.innerHTML = `<div class="empty">Nenhum jogador cadastrado ainda.</div>`;
+      return;
+    }
+    list.innerHTML = t.players.map(p=>{
+      p.attrs = p.attrs || {};
+      const open = openAttrsPid === p.id;
+      return `
+      <div>
+        <div class="roster-row">
+          <span class="jersey">${escapeHtml(p.num)}</span>
+          <span class="name">${escapeHtml(p.name)}</span>
+          <button data-pid="${p.id}" class="btn-toggle-attrs" style="color:var(--accent);">${open?'fechar':'ficha física'}</button>
+          <button data-pid="${p.id}" class="btn-remove-player">remover</button>
+        </div>
+        ${open ? `
+        <div class="panel" style="margin:6px 0 0;padding:14px;">
+          <div class="row" style="gap:12px;">
+            ${ATTR_FIELDS.map(f=>`
+              <div class="field" style="min-width:150px;flex:1;margin:0;">
+                <label>${f.label}</label>
+                ${f.type==='select'
+                  ? `<select data-pid="${p.id}" data-attr="${f.key}" class="attr-input">
+                      <option value="">—</option>
+                      ${f.options.map(o=>`<option value="${o}" ${p.attrs[f.key]===o?'selected':''}>${o}</option>`).join('')}
+                     </select>`
+                  : `<input type="${f.type}" step="${f.step||'1'}" data-pid="${p.id}" data-attr="${f.key}" class="attr-input" value="${p.attrs[f.key]||''}">`
+                }
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.btn-remove-player').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        t.players = t.players.filter(p=>p.id!==btn.dataset.pid);
+        save(); renderRoster();
+      });
+    });
+    list.querySelectorAll('.btn-toggle-attrs').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        openAttrsPid = openAttrsPid === btn.dataset.pid ? null : btn.dataset.pid;
+        renderRoster();
+      });
+    });
+    list.querySelectorAll('.attr-input').forEach(input=>{
+      input.addEventListener('change', ()=>{
+        const p = t.players.find(x=>x.id===input.dataset.pid);
+        if(!p) return;
+        p.attrs = p.attrs || {};
+        p.attrs[input.dataset.attr] = input.value;
+        save();
+      });
+    });
+  }
+
+  // ---------- GAMES ----------
+  document.getElementById('btn-start-game').addEventListener('click', ()=>{
+    const t = team();
+    if(!t){ alert('Crie ou selecione um time primeiro.'); return; }
+    if(!t.players.length){ alert('Cadastre jogadores no elenco antes de iniciar um jogo.'); return; }
+    const opp = document.getElementById('opponent-name').value.trim() || 'Adversário';
+    const game = {
+      id: uid(), opponent: opp, date: new Date().toISOString(),
+      finished: false,
+      stats: Object.fromEntries(t.players.map(p=>[p.id,{pts:0,reb:0,ast:0,fg3:0,stl:0}])),
+      log: []
+    };
+    t.games.push(game);
+    currentGameId = game.id;
+    document.getElementById('opponent-name').value = '';
+    save(); renderGames(); switchView('scorer');
+  });
+
+  function renderGames(){
+    const t = team();
+    const list = document.getElementById('games-list');
+    if(!t || !t.games.length){
+      list.innerHTML = `<div class="empty">Nenhum jogo registrado ainda.</div>`;
+      return;
+    }
+    list.innerHTML = t.games.slice().reverse().map(g=>{
+      const total = Object.values(g.stats).reduce((s,x)=>s+x.pts,0);
+      const d = new Date(g.date);
+      return `<div class="roster-row">
+        <span class="name">vs ${escapeHtml(g.opponent)} <span style="color:var(--ink-dim);">· ${d.toLocaleDateString('pt-BR')}</span></span>
+        <span class="num" style="color:var(--ink-dim);font-size:12.5px;">${total} pts ${g.finished?'· encerrado':'· em andamento'}</span>
+        <button data-gid="${g.id}" class="btn-open-game" style="color:var(--accent-ink);">${g.finished?'ver':'continuar'}</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.btn-open-game').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ currentGameId = btn.dataset.gid; switchView('scorer'); });
+    });
+  }
+
+  // ---------- SCORER ----------
+  function currentGame(){
+    const t = team();
+    if(!t || !currentGameId) return null;
+    return t.games.find(g=>g.id===currentGameId) || null;
+  }
+
+  function record(pid, changes){
+    const g = currentGame();
+    if(!g || g.finished) return;
+    Object.entries(changes).forEach(([type,delta])=>{ g.stats[pid][type] += delta; });
+    g.log.push({ pid, changes, ts: Date.now() });
+    save(); renderScorer();
+  }
+
+  document.getElementById('btn-undo').addEventListener('click', ()=>{
+    const g = currentGame();
+    if(!g || !g.log.length) return;
+    const last = g.log.pop();
+    Object.entries(last.changes).forEach(([type,delta])=>{ g.stats[last.pid][type] -= delta; });
+    save(); renderScorer();
+  });
+
+  document.getElementById('btn-finish-game').addEventListener('click', ()=>{
+    const g = currentGame();
+    if(!g) return;
+    g.finished = true;
+    save(); renderScorer(); renderGames(); renderRankings();
+  });
+
+  function renderScorer(){
+    const t = team();
+    const g = currentGame();
+    const empty = document.getElementById('scorer-empty');
+    const body = document.getElementById('scorer-body');
+    if(!t || !g){
+      empty.style.display='block'; body.style.display='none';
+      return;
+    }
+    empty.style.display='none'; body.style.display='block';
+    document.getElementById('scorer-opponent').textContent = 'vs ' + g.opponent;
+    const total = Object.values(g.stats).reduce((s,x)=>s+x.pts,0);
+    document.getElementById('scorer-total').innerHTML = total + ' <span style="font-size:20px;color:var(--ink-dim);">PTS</span>';
+
+    const disabled = g.finished ? 'disabled' : '';
+    document.getElementById('oncourt').innerHTML = t.players.map(p=>{
+      const s = g.stats[p.id] || {pts:0,reb:0,ast:0,fg3:0,stl:0};
+      return `<div class="player-card">
+        <div class="pname"><span class="jersey">${escapeHtml(p.num)}</span><strong>${escapeHtml(p.name)}</strong></div>
+        <div class="stat-grid">
+          <button class="stat-btn make" ${disabled} data-pid="${p.id}" data-changes='{"pts":2}'>+2 pontos</button>
+          <button class="stat-btn make" ${disabled} data-pid="${p.id}" data-changes='{"pts":3,"fg3":1}'>+3 pontos</button>
+          <button class="stat-btn make" ${disabled} data-pid="${p.id}" data-changes='{"pts":1}'>+1 lance livre</button>
+          <button class="stat-btn" ${disabled} data-pid="${p.id}" data-changes='{"reb":1}'>+ rebote</button>
+          <button class="stat-btn" ${disabled} data-pid="${p.id}" data-changes='{"ast":1}'>+ assistência</button>
+          <button class="stat-btn" ${disabled} data-pid="${p.id}" data-changes='{"stl":1}'>+ roubo de bola</button>
+        </div>
+        <div class="live-line">${s.pts} pontos · ${s.fg3} cestas de 3 · ${s.reb} rebotes · ${s.ast} assistências · ${s.stl} roubos</div>
+      </div>`;
+    }).join('');
+    document.getElementById('oncourt').querySelectorAll('.stat-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        record(btn.dataset.pid, JSON.parse(btn.dataset.changes));
+      });
+    });
+    document.getElementById('btn-finish-game').disabled = g.finished;
+    document.getElementById('btn-undo').disabled = g.finished || !g.log.length;
+    const last = g.log[g.log.length-1];
+    document.getElementById('log').textContent = last
+      ? `última: ${t.players.find(p=>p.id===last.pid)?.name || '—'} ` + Object.entries(last.changes).map(([k,v])=>`+${v} ${STAT_NAMES[k]||k}`).join(' ')
+      : 'nenhum evento ainda';
+  }
+
+  // ---------- RANKINGS ----------
+  let sortKey = 'ppg';
+  document.querySelectorAll('th.sortable').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      sortKey = th.dataset.key;
+      document.querySelectorAll('th.sortable').forEach(x=>x.classList.toggle('active', x===th));
+      renderRankings();
+    });
+  });
+
+  function renderRankings(){
+    const t = team();
+    const tbody = document.getElementById('rankings-body');
+    if(!t || !t.players.length){
+      tbody.innerHTML = `<tr><td colspan="12" class="empty">Sem dados ainda — jogue uma partida na aba Súmula.</td></tr>`;
+      return;
+    }
+    const rows = t.players.map(p=>{
+      const games = t.games.filter(g=>g.stats[p.id]);
+      const gp = games.filter(g=>g.finished).length || games.length;
+      const totals = games.reduce((acc,g)=>{
+        const s = g.stats[p.id];
+        acc.pts += s.pts; acc.reb += s.reb; acc.ast += s.ast;
+        acc.fg3 += s.fg3||0; acc.stl += s.stl||0;
+        return acc;
+      },{pts:0,reb:0,ast:0,fg3:0,stl:0});
+      const div = gp || 1;
+      return {
+        id: p.id, name: p.name, num: p.num, gp,
+        pts: totals.pts, reb: totals.reb, ast: totals.ast, fg3: totals.fg3, stl: totals.stl,
+        ppg: totals.pts/div, rpg: totals.reb/div, apg: totals.ast/div, spg: totals.stl/div
+      };
+    }).sort((a,b)=> b[sortKey]-a[sortKey]);
+
+    tbody.innerHTML = rows.map((r,i)=>`
+      <tr class="athlete-row" data-pid="${r.id}" style="cursor:pointer;">
+        <td class="rank-num">${i+1}</td>
+        <td>${escapeHtml(r.name)} <span style="color:var(--ink-dim);">#${escapeHtml(r.num)}</span></td>
+        <td>${r.gp}</td>
+        <td>${r.ppg.toFixed(1)}</td>
+        <td>${r.rpg.toFixed(1)}</td>
+        <td>${r.apg.toFixed(1)}</td>
+        <td>${r.spg.toFixed(1)}</td>
+        <td>${r.pts}</td>
+        <td>${r.reb}</td>
+        <td>${r.ast}</td>
+        <td>${r.fg3}</td>
+        <td>${r.stl}</td>
+      </tr>`).join('');
+    tbody.querySelectorAll('.athlete-row').forEach(tr=>{
+      tr.addEventListener('click', ()=>{
+        switchView('athlete');
+        document.getElementById('athlete-select').value = tr.dataset.pid;
+        renderAthlete(tr.dataset.pid);
+      });
+    });
+  }
+
+  // ---------- ATHLETE PROFILE ----------
+  const athleteSelect = document.getElementById('athlete-select');
+  athleteSelect.addEventListener('change', ()=> renderAthlete(athleteSelect.value));
+
+  function renderAthleteSelect(){
+    const t = team();
+    athleteSelect.innerHTML = (t && t.players.length)
+      ? t.players.map(p=>`<option value="${p.id}">#${escapeHtml(p.num)} ${escapeHtml(p.name)}</option>`).join('')
+      : `<option value="">— sem atletas —</option>`;
+  }
+
+  function renderAthlete(pid){
+    const t = team();
+    const body = document.getElementById('athlete-body');
+    const p = t && t.players.find(x=>x.id===pid);
+    if(!p){
+      body.innerHTML = `<div class="empty">Selecione um atleta pra ver a ficha.</div>`;
+      return;
+    }
+    const games = t.games.filter(g=>g.stats[p.id]).slice().reverse();
+    const finished = games.filter(g=>g.finished);
+    const totals = games.reduce((acc,g)=>{
+      const s = g.stats[p.id];
+      acc.pts+=s.pts; acc.reb+=s.reb; acc.ast+=s.ast; acc.fg3+=s.fg3||0; acc.stl+=s.stl||0;
+      return acc;
+    },{pts:0,reb:0,ast:0,fg3:0,stl:0});
+    const gp = finished.length || games.length || 1;
+
+    const metrics = [
+      ['Pontos por jogo', (totals.pts/gp).toFixed(1)],
+      ['Rebotes por jogo', (totals.reb/gp).toFixed(1)],
+      ['Assistências por jogo', (totals.ast/gp).toFixed(1)],
+      ['Roubos por jogo', (totals.stl/gp).toFixed(1)],
+      ['Cestas de 3 na temporada', totals.fg3],
+      ['Jogos disputados', games.length],
+    ];
+
+    const attrs = p.attrs || {};
+    const age = attrAge(attrs.birthdate);
+    const combine = [
+      ['Posição', attrs.position || '—'],
+      ['Idade', age!=null ? age+' anos' : '—'],
+      ['Altura', attrs.height ? attrs.height+' cm' : '—'],
+      ['Peso', attrs.weight ? attrs.weight+' kg' : '—'],
+      ['Envergadura', attrs.wingspan ? attrs.wingspan+' cm' : '—'],
+      ['Impulsão vertical', attrs.vertical ? attrs.vertical+' cm' : '—'],
+      ['Velocidade 20m', attrs.sprint ? attrs.sprint+' s' : '—'],
+    ];
+
+    body.innerHTML = `
+      <div class="row" style="margin-bottom:20px;">
+        <span class="jersey" style="width:44px;height:44px;font-size:18px;">${escapeHtml(p.num)}</span>
+        <div>
+          <div class="display" style="font-size:22px;">${escapeHtml(p.name)}</div>
+          <div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${escapeHtml(t.name)}</div>
+        </div>
+      </div>
+      <div class="eyebrow">Ficha física</div>
+      <div class="table-wrap" style="margin-bottom:22px;">
+        <table>
+          <thead><tr>${combine.map(([label])=>`<th>${label}</th>`).join('')}</tr></thead>
+          <tbody><tr>${combine.map(([,val])=>`<td class="num" style="font-family:'Rajdhani';font-size:15px;font-weight:600;">${val}</td>`).join('')}</tr></tbody>
+        </table>
+      </div>
+      <div class="eyebrow">Desempenho</div>
+      <div class="oncourt" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:22px;">
+        ${metrics.map(([label,val])=>`
+          <div class="player-card" style="text-align:center;">
+            <div class="num" style="font-size:26px;color:var(--accent);text-shadow:0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);">${val}</div>
+            <div style="font-family:'JetBrains Mono';font-size:10px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:0.03em;margin-top:4px;">${label}</div>
+          </div>`).join('')}
+      </div>
+      <div class="eyebrow">Evolução na temporada</div>
+      <div class="panel" style="margin-bottom:16px;padding:14px;">
+        <canvas id="athlete-chart" style="width:100%;height:220px;display:block;"></canvas>
+        <div class="row" id="chart-legend" style="margin-top:10px;gap:18px;font-family:'JetBrains Mono';font-size:10.5px;color:var(--ink-dim);">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
+            <input type="checkbox" class="chart-toggle" data-series="pts" checked style="width:auto;accent-color:var(--accent);">
+            <span style="display:inline-block;width:9px;height:9px;background:var(--accent);"></span>pontos
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
+            <input type="checkbox" class="chart-toggle" data-series="reb" checked style="width:auto;accent-color:var(--make);">
+            <span style="display:inline-block;width:9px;height:9px;background:var(--make);"></span>rebotes
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;">
+            <input type="checkbox" class="chart-toggle" data-series="ast" checked style="width:auto;accent-color:var(--court);">
+            <span style="display:inline-block;width:9px;height:9px;background:var(--court);"></span>assistências
+          </label>
+        </div>
+      </div>
+      <div class="eyebrow">Histórico de jogos</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Adversário</th><th>Pontos</th><th title="Cestas de 3 pontos">3PM</th><th>Rebotes</th><th>Assist.</th><th>Roubos</th></tr></thead>
+          <tbody>
+            ${games.length ? games.map(g=>{
+              const s = g.stats[p.id];
+              return `<tr>
+                <td>${new Date(g.date).toLocaleDateString('pt-BR')}</td>
+                <td>vs ${escapeHtml(g.opponent)} ${g.finished?'':'<span style=\"color:var(--accent);\">· em andamento</span>'}</td>
+                <td>${s.pts}</td><td>${s.fg3||0}</td><td>${s.reb}</td><td>${s.ast}</td><td>${s.stl||0}</td>
+              </tr>`;
+            }).join('') : `<tr><td colspan="7" class="empty">Nenhum jogo registrado.</td></tr>`}
+          </tbody>
+        </table>
+      </div>`;
+
+    currentChartGames = games.slice().reverse();
+    currentChartPid = p.id;
+    document.querySelectorAll('.chart-toggle').forEach(cb=>{
+      cb.onchange = ()=> drawAthleteChart(currentChartGames, currentChartPid);
+    });
+    drawAthleteChart(currentChartGames, currentChartPid);
+  }
+
+  let currentChartGames = [], currentChartPid = null;
+
+  function drawAthleteChart(gamesChrono, pid){
+    const canvas = document.getElementById('athlete-chart');
+    if(!canvas || !gamesChrono.length) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = 220;
+    canvas.width = w*dpr; canvas.height = h*dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr,dpr);
+    ctx.clearRect(0,0,w,h);
+
+    const active = {};
+    document.querySelectorAll('.chart-toggle').forEach(cb=>{ active[cb.dataset.series] = cb.checked; });
+
+    const series = { pts: [], reb: [], ast: [] };
+    gamesChrono.forEach(g=>{
+      const s = g.stats[pid];
+      series.pts.push(s.pts); series.reb.push(s.reb); series.ast.push(s.ast);
+    });
+    const activeVals = Object.keys(series).filter(k=>active[k]).flatMap(k=>series[k]);
+    const maxVal = Math.max(1, ...(activeVals.length ? activeVals : [0]));
+    const padL = 28, padB = 20, padT = 10, padR = 10;
+    const plotW = w - padL - padR, plotH = h - padT - padB;
+    const n = gamesChrono.length;
+    const stepX = n>1 ? plotW/(n-1) : 0;
+
+    const styles = getComputedStyle(document.documentElement);
+    const gridColor = styles.getPropertyValue('--line').trim();
+    const dimColor = styles.getPropertyValue('--ink-dim').trim();
+
+    ctx.strokeStyle = gridColor; ctx.lineWidth = 1; ctx.font = '10px JetBrains Mono, monospace'; ctx.fillStyle = dimColor;
+    for(let i=0;i<=4;i++){
+      const y = padT + plotH - (plotH*i/4);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+      ctx.fillText(Math.round(maxVal*i/4), 2, y+3);
+    }
+
+    if(!activeVals.length){
+      ctx.fillStyle = dimColor; ctx.font = '12px JetBrains Mono, monospace';
+      ctx.fillText('Nenhuma série selecionada', padL, padT + plotH/2);
+      return;
+    }
+
+    function plot(vals, color){
+      ctx.beginPath();
+      vals.forEach((v,i)=>{
+        const x = padL + stepX*i;
+        const y = padT + plotH - (plotH*v/maxVal);
+        i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      });
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      vals.forEach((v,i)=>{
+        const x = padL + stepX*i;
+        const y = padT + plotH - (plotH*v/maxVal);
+        ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
+      });
+    }
+    if(active.reb) plot(series.reb, styles.getPropertyValue('--make').trim());
+    if(active.ast) plot(series.ast, styles.getPropertyValue('--court').trim());
+    if(active.pts) plot(series.pts, styles.getPropertyValue('--accent').trim());
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  document.getElementById('btn-export-pdf').addEventListener('click', ()=>{
+    if(!athleteSelect.value){ alert('Selecione um atleta primeiro.'); return; }
+    document.body.classList.add('print-athlete');
+    window.print();
+    document.body.classList.remove('print-athlete');
+  });
+
+  // ---------- TEAM DRAW ----------
+  document.getElementById('btn-draw').addEventListener('click', ()=>{
+    const t = team();
+    if(!t || t.players.length < 2){ alert('Cadastre pelo menos 2 jogadores no elenco.'); return; }
+    const count = Math.max(2, Math.min(6, Number(document.getElementById('draw-count').value) || 2));
+    const balance = document.getElementById('draw-balance').checked;
+
+    const withPpg = t.players.map(p=>{
+      const games = t.games.filter(g=>g.stats[p.id]);
+      const gp = games.length || 1;
+      const pts = games.reduce((s,g)=>s+g.stats[p.id].pts,0);
+      return { ...p, ppg: pts/gp };
+    });
+
+    const pool = balance
+      ? withPpg.slice().sort((a,b)=> b.ppg - a.ppg)
+      : shuffle(withPpg.slice());
+
+    const teams = Array.from({length:count}, ()=>[]);
+    if(balance){
+      // snake draft: distribui do melhor pro pior alternando direção, pra equilibrar o nível médio de cada time
+      let dir = 1, idx = 0;
+      pool.forEach(p=>{
+        teams[idx].push(p);
+        idx += dir;
+        if(idx===count){ idx=count-1; dir=-1; }
+        else if(idx<0){ idx=0; dir=1; }
+      });
+    } else {
+      pool.forEach((p,i)=> teams[i%count].push(p));
+    }
+
+    const result = document.getElementById('draw-result');
+    result.innerHTML = teams.map((squad,i)=>{
+      const avg = squad.length ? (squad.reduce((s,p)=>s+p.ppg,0)/squad.length).toFixed(1) : '0.0';
+      return `<div class="panel" style="margin-bottom:12px;">
+        <div class="eyebrow">Time ${i+1} · média ${avg} pts/jogo</div>
+        <div class="roster-list">
+          ${squad.map(p=>`<div class="roster-row"><span class="jersey">${escapeHtml(p.num)}</span><span class="name">${escapeHtml(p.name)}</span></div>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  });
+
+  function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i],arr[j]] = [arr[j],arr[i]];
+    }
+    return arr;
+  }
+
+  function renderAll(){
+    renderTeamSelect(); renderRoster(); renderGames(); renderScorer(); renderRankings(); renderAthleteSelect();
+  }
+
+  renderAll();
+})();
+</script>
