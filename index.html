@@ -358,6 +358,8 @@ footer{
   th, td{ padding:7px 6px; font-size:11.5px; }
   .row{ gap:8px; }
   input[type=text],input[type=number],select{ font-size:16px; padding:11px; } /* 16px evita zoom automático no iOS */
+  .row-stack{ flex-direction:column; align-items:stretch; }
+  .row-stack > *{ max-width:none!important; width:100%; text-align:center; min-height:44px; }
 }
 
 /* TABLET — mais espaço e alvos de toque maiores, foco em visibilidade a distância */
@@ -418,7 +420,7 @@ footer{
     <div class="panel">
       <span class="eyebrow">Time</span>
       <h2>Selecionar ou criar time</h2>
-      <div class="row">
+      <div class="row row-stack">
         <select id="team-select" style="max-width:260px;"></select>
         <button class="btn" id="btn-new-team">+ Novo time</button>
         <button class="btn ghost" id="btn-demo-data">Carregar dados de demonstração</button>
