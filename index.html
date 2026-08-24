@@ -287,24 +287,31 @@ input:focus,select:focus,button:focus-visible{
 #log{font-size:11.5px;color:var(--ink-dim);font-family:'JetBrains Mono';}
 
 /* RANKINGS */
-table{width:100%;border-collapse:collapse;font-size:13px;}
+table{width:max-content;min-width:100%;border-collapse:collapse;font-size:13px;table-layout:auto;}
 th{
   text-align:right;font-family:'JetBrains Mono';font-weight:600;
   font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;
-  color:var(--ink-dim);padding:9px 10px;border-bottom:1px solid var(--line);
-  background:var(--surface-2);
+  color:var(--ink-dim);padding:9px 12px;border-bottom:1px solid var(--line);
+  background:var(--surface-2);white-space:nowrap;
 }
 th:first-child,th:nth-child(2){text-align:left;}
-td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;
-  font-family:'JetBrains Mono';font-variant-numeric:tabular-nums;}
-td:first-child,td:nth-child(2){text-align:left;font-family:'Rajdhani';font-size:15px;font-weight:600;letter-spacing:0.01em;}
+td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:right;
+  font-family:'JetBrains Mono';font-variant-numeric:tabular-nums;white-space:nowrap;}
+td:first-child,td:nth-child(2){text-align:left;font-family:'Rajdhani';font-size:15px;font-weight:600;letter-spacing:0.01em;white-space:normal;}
 tr:last-child td{border-bottom:none;}
 tr:hover td{background:var(--surface-2);}
 .rank-num{color:var(--ink-dim);width:26px;display:inline-block;}
 .table-wrap{overflow-x:auto;border:1px solid var(--line);}
-table{border:none;}
 th.sortable{cursor:pointer;}
 th.sortable.active{color:var(--accent);}
+
+.filter-chip{
+  font-family:'JetBrains Mono';font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:0.04em;
+  padding:8px 13px;border:1px solid var(--line);background:var(--surface-2);
+  color:var(--ink-dim);cursor:pointer;
+}
+.filter-chip.active{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);}
 
 .empty{
   text-align:center;color:var(--ink-dim);font-size:13px;
@@ -466,28 +473,14 @@ footer{
     <div class="panel">
       <span class="eyebrow">Temporada</span>
       <h2>Rankings do time</h2>
+      <div class="row" id="ranking-filters" style="margin-bottom:16px;"></div>
       <div class="table-wrap">
         <table id="rankings-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Jogador</th>
-              <th class="sortable" data-key="gp" title="Jogos disputados">Jogos</th>
-              <th class="sortable active" data-key="ppg" title="Pontos por jogo">PPG</th>
-              <th class="sortable" data-key="rpg" title="Rebotes por jogo">RPG</th>
-              <th class="sortable" data-key="apg" title="Assistências por jogo">APG</th>
-              <th class="sortable" data-key="spg" title="Roubos de bola por jogo">SPG</th>
-              <th class="sortable" data-key="pts" title="Pontos na temporada">Pontos</th>
-              <th class="sortable" data-key="reb" title="Rebotes na temporada">Rebotes</th>
-              <th class="sortable" data-key="ast" title="Assistências na temporada">Assist.</th>
-              <th class="sortable" data-key="fg3" title="Cestas de 3 pontos convertidas">3PM</th>
-              <th class="sortable" data-key="stl" title="Roubos de bola na temporada">Roubos</th>
-            </tr>
-          </thead>
+          <thead id="rankings-head"></thead>
           <tbody id="rankings-body"></tbody>
         </table>
       </div>
-      <div style="margin-top:10px;color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">clique num atleta pra abrir o perfil individual →</div>
+      <div style="margin-top:10px;color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">nenhum filtro selecionado = ranking geral · clique num atleta pra abrir o perfil individual →</div>
     </div>
   </section>
 
@@ -910,20 +903,65 @@ footer{
   }
 
   // ---------- RANKINGS ----------
+  // ponytail: cada categoria define suas colunas (média + total) — marcar filtros mostra só essas colunas; nenhum filtro = ranking geral com tudo
+  const RANKING_CATEGORIES = [
+    { key:'pontos', label:'Pontos', cols:[
+      {key:'ppg', label:'PPG', title:'Pontos por jogo'},
+      {key:'pts', label:'Pontos', title:'Pontos na temporada'},
+    ]},
+    { key:'rebotes', label:'Rebotes', cols:[
+      {key:'rpg', label:'RPG', title:'Rebotes por jogo'},
+      {key:'reb', label:'Rebotes', title:'Rebotes na temporada'},
+    ]},
+    { key:'assistencias', label:'Assistências', cols:[
+      {key:'apg', label:'APG', title:'Assistências por jogo'},
+      {key:'ast', label:'Assist.', title:'Assistências na temporada'},
+    ]},
+    { key:'roubos', label:'Roubos de bola', cols:[
+      {key:'spg', label:'SPG', title:'Roubos de bola por jogo'},
+      {key:'stl', label:'Roubos', title:'Roubos de bola na temporada'},
+    ]},
+    { key:'tresp', label:'Cestas de 3', cols:[
+      {key:'fg3', label:'3PM', title:'Cestas de 3 pontos convertidas'},
+    ]},
+  ];
+  const rankingFilters = new Set();
   let sortKey = 'ppg';
-  document.querySelectorAll('th.sortable').forEach(th=>{
-    th.addEventListener('click', ()=>{
-      sortKey = th.dataset.key;
-      document.querySelectorAll('th.sortable').forEach(x=>x.classList.toggle('active', x===th));
+
+  const filtersBar = document.getElementById('ranking-filters');
+  filtersBar.innerHTML = RANKING_CATEGORIES.map(c=>`<button type="button" class="filter-chip" data-cat="${c.key}">${c.label}</button>`).join('');
+  filtersBar.querySelectorAll('.filter-chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      const cat = chip.dataset.cat;
+      rankingFilters.has(cat) ? rankingFilters.delete(cat) : rankingFilters.add(cat);
+      chip.classList.toggle('active', rankingFilters.has(cat));
       renderRankings();
     });
   });
 
+  function visibleCategories(){
+    return rankingFilters.size ? RANKING_CATEGORIES.filter(c=>rankingFilters.has(c.key)) : RANKING_CATEGORIES;
+  }
+
   function renderRankings(){
     const t = team();
     const tbody = document.getElementById('rankings-body');
+    const thead = document.getElementById('rankings-head');
+    const cats = visibleCategories();
+    const cols = cats.flatMap(c=>c.cols);
+    if(!cols.some(c=>c.key===sortKey)) sortKey = cols[0].key;
+
+    thead.innerHTML = `<tr>
+      <th>#</th><th>Jogador</th>
+      <th class="sortable" data-key="gp" title="Jogos disputados">Jogos</th>
+      ${cols.map(c=>`<th class="sortable ${c.key===sortKey?'active':''}" data-key="${c.key}" title="${c.title}">${c.label}</th>`).join('')}
+    </tr>`;
+    thead.querySelectorAll('th.sortable').forEach(th=>{
+      th.addEventListener('click', ()=>{ sortKey = th.dataset.key; renderRankings(); });
+    });
+
     if(!t || !t.players.length){
-      tbody.innerHTML = `<tr><td colspan="12" class="empty">Sem dados ainda — jogue uma partida na aba Súmula.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${cols.length+3}" class="empty">Sem dados ainda — jogue uma partida na aba Súmula.</td></tr>`;
       return;
     }
     const rows = t.players.map(p=>{
@@ -943,20 +981,13 @@ footer{
       };
     }).sort((a,b)=> b[sortKey]-a[sortKey]);
 
+    const isRate = k => ['ppg','rpg','apg','spg'].includes(k);
     tbody.innerHTML = rows.map((r,i)=>`
       <tr class="athlete-row" data-pid="${r.id}" style="cursor:pointer;">
         <td class="rank-num">${i+1}</td>
         <td>${escapeHtml(r.name)} <span style="color:var(--ink-dim);">#${escapeHtml(r.num)}</span></td>
         <td>${r.gp}</td>
-        <td>${r.ppg.toFixed(1)}</td>
-        <td>${r.rpg.toFixed(1)}</td>
-        <td>${r.apg.toFixed(1)}</td>
-        <td>${r.spg.toFixed(1)}</td>
-        <td>${r.pts}</td>
-        <td>${r.reb}</td>
-        <td>${r.ast}</td>
-        <td>${r.fg3}</td>
-        <td>${r.stl}</td>
+        ${cols.map(c=>`<td>${isRate(c.key) ? r[c.key].toFixed(1) : r[c.key]}</td>`).join('')}
       </tr>`).join('');
     tbody.querySelectorAll('.athlete-row').forEach(tr=>{
       tr.addEventListener('click', ()=>{
