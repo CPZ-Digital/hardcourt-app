@@ -1,5 +1,13 @@
 <title>Hardcourt</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0d10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hardcourt">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -601,6 +609,9 @@ footer{
       ['Rafael Souza',11,{position:'Ala-armador',birthdate:'2000-11-02',height:192,weight:88,wingspan:196,vertical:60,sprint:3.02}],
       ['Thiago Lima',5,{position:'Armador',birthdate:'2002-05-30',height:183,weight:78,wingspan:186,vertical:55,sprint:2.91}],
       ['Gustavo Rocha',44,{position:'Pivô',birthdate:'1998-01-18',height:208,weight:108,wingspan:218,vertical:52,sprint:3.4}],
+      ['Caio Mendes',3,{position:'Ala',birthdate:'2002-08-19',height:195,weight:89,wingspan:199,vertical:59,sprint:3.01}],
+      ['Vitor Barros',14,{position:'Pivô',birthdate:'1999-04-06',height:206,weight:105,wingspan:215,vertical:53,sprint:3.35}],
+      ['Enzo Cardoso',8,{position:'Ala-armador',birthdate:'2003-01-27',height:189,weight:83,wingspan:192,vertical:57,sprint:2.96}],
     ];
     const rosterB = [
       ['Diego Martins',10,{position:'Armador',birthdate:'2000-09-09',height:186,weight:80,wingspan:190,vertical:57,sprint:2.95}],
@@ -608,6 +619,9 @@ footer{
       ['Marcelo Dias',9,{position:'Ala',birthdate:'2001-06-25',height:196,weight:90,wingspan:200,vertical:61,sprint:3.0}],
       ['Rodrigo Nunes',15,{position:'Ala-armador',birthdate:'2000-12-03',height:191,weight:86,wingspan:194,vertical:59,sprint:2.99}],
       ['André Pinto',21,{position:'Pivô',birthdate:'1997-10-11',height:210,weight:112,wingspan:220,vertical:50,sprint:3.45}],
+      ['Felipe Rezende',6,{position:'Armador',birthdate:'2002-02-11',height:184,weight:77,wingspan:187,vertical:56,sprint:2.93}],
+      ['Igor Barbosa',27,{position:'Ala',birthdate:'2000-05-16',height:197,weight:92,wingspan:201,vertical:60,sprint:3.03}],
+      ['Nicolas Freitas',12,{position:'Pivô',birthdate:'1998-11-29',height:205,weight:103,wingspan:214,vertical:54,sprint:3.3}],
     ];
 
     function makeTeam(name, roster){
@@ -621,7 +635,7 @@ footer{
     const teamB = makeTeam('Furacão BC', rosterB);
 
     // jogo 1: Águias vs Furacão, com estatísticas variadas
-    function makeGame(team, opponent, statLines){
+    function makeGame(team, opponent, statLines, finished=true){
       const stats = {};
       const log = [];
       team.players.forEach((p,i)=>{
@@ -631,7 +645,7 @@ footer{
       });
       const game = {
         id: uid(), opponent, date: new Date().toISOString(),
-        finished: true, stats, log
+        finished, stats, log
       };
       team.games.push(game);
       return game;
@@ -643,6 +657,9 @@ footer{
       {pts:12,reb:3,ast:7,fg3:0,stl:3},
       {pts:9,reb:4,ast:1,fg3:1,stl:0},
       {pts:6,reb:11,ast:0,fg3:0,stl:1},
+      {pts:8,reb:2,ast:3,fg3:0,stl:1},
+      {pts:4,reb:8,ast:0,fg3:0,stl:0},
+      {pts:11,reb:3,ast:4,fg3:1,stl:2},
     ]);
     makeGame(teamA, 'Tubarões SC', [
       {pts:16,reb:5,ast:8,fg3:1,stl:1},
@@ -650,7 +667,26 @@ footer{
       {pts:14,reb:2,ast:4,fg3:2,stl:2},
       {pts:5,reb:6,ast:2,fg3:0,stl:1},
       {pts:8,reb:9,ast:1,fg3:0,stl:0},
+      {pts:13,reb:4,ast:2,fg3:1,stl:1},
+      {pts:2,reb:10,ast:0,fg3:0,stl:0},
+      {pts:9,reb:3,ast:5,fg3:0,stl:1},
     ]);
+    makeGame(teamA, 'Panteras BC', [
+      {pts:19,reb:4,ast:6,fg3:2,stl:2},
+      {pts:15,reb:8,ast:3,fg3:0,stl:0},
+      {pts:10,reb:3,ast:5,fg3:1,stl:1},
+      {pts:7,reb:5,ast:2,fg3:1,stl:0},
+      {pts:5,reb:12,ast:1,fg3:0,stl:0},
+      {pts:12,reb:3,ast:2,fg3:2,stl:2},
+      {pts:6,reb:9,ast:0,fg3:0,stl:0},
+      {pts:8,reb:2,ast:6,fg3:0,stl:3},
+    ]);
+    // jogo ainda em andamento — não deve entrar nas médias/ranking até ser encerrado
+    makeGame(teamA, 'Cometas EC', [
+      {pts:6,reb:2,ast:1,fg3:1,stl:0},
+      {pts:4,reb:3,ast:0,fg3:0,stl:1},
+      {pts:2,reb:1,ast:2,fg3:0,stl:0},
+    ], false);
 
     makeGame(teamB, 'Águias FC', [
       {pts:20,reb:8,ast:3,fg3:2,stl:1},
@@ -658,6 +694,19 @@ footer{
       {pts:11,reb:5,ast:2,fg3:0,stl:0},
       {pts:19,reb:3,ast:4,fg3:3,stl:1},
       {pts:7,reb:10,ast:1,fg3:0,stl:3},
+      {pts:9,reb:2,ast:3,fg3:1,stl:0},
+      {pts:6,reb:7,ast:0,fg3:0,stl:1},
+      {pts:12,reb:3,ast:4,fg3:1,stl:2},
+    ]);
+    makeGame(teamB, 'Tubarões SC', [
+      {pts:17,reb:6,ast:4,fg3:1,stl:2},
+      {pts:12,reb:5,ast:5,fg3:0,stl:1},
+      {pts:9,reb:4,ast:3,fg3:1,stl:0},
+      {pts:21,reb:2,ast:6,fg3:3,stl:1},
+      {pts:8,reb:11,ast:0,fg3:0,stl:0},
+      {pts:10,reb:3,ast:2,fg3:1,stl:1},
+      {pts:5,reb:8,ast:1,fg3:0,stl:0},
+      {pts:13,reb:4,ast:3,fg3:2,stl:1},
     ]);
 
     currentTeamId = teamA.id;
@@ -878,8 +927,8 @@ footer{
       return;
     }
     const rows = t.players.map(p=>{
-      const games = t.games.filter(g=>g.stats[p.id]);
-      const gp = games.filter(g=>g.finished).length || games.length;
+      const games = t.games.filter(g=>g.stats[p.id] && g.finished);
+      const gp = games.length;
       const totals = games.reduce((acc,g)=>{
         const s = g.stats[p.id];
         acc.pts += s.pts; acc.reb += s.reb; acc.ast += s.ast;
@@ -939,12 +988,12 @@ footer{
     }
     const games = t.games.filter(g=>g.stats[p.id]).slice().reverse();
     const finished = games.filter(g=>g.finished);
-    const totals = games.reduce((acc,g)=>{
+    const totals = finished.reduce((acc,g)=>{
       const s = g.stats[p.id];
       acc.pts+=s.pts; acc.reb+=s.reb; acc.ast+=s.ast; acc.fg3+=s.fg3||0; acc.stl+=s.stl||0;
       return acc;
     },{pts:0,reb:0,ast:0,fg3:0,stl:0});
-    const gp = finished.length || games.length || 1;
+    const gp = finished.length || 1;
 
     const metrics = [
       ['Pontos por jogo', (totals.pts/gp).toFixed(1)],
@@ -952,7 +1001,7 @@ footer{
       ['Assistências por jogo', (totals.ast/gp).toFixed(1)],
       ['Roubos por jogo', (totals.stl/gp).toFixed(1)],
       ['Cestas de 3 na temporada', totals.fg3],
-      ['Jogos disputados', games.length],
+      ['Jogos disputados', finished.length],
     ];
 
     const attrs = p.attrs || {};
@@ -1115,7 +1164,7 @@ footer{
     const balance = document.getElementById('draw-balance').checked;
 
     const withPpg = t.players.map(p=>{
-      const games = t.games.filter(g=>g.stats[p.id]);
+      const games = t.games.filter(g=>g.stats[p.id] && g.finished);
       const gp = games.length || 1;
       const pts = games.reduce((s,g)=>s+g.stats[p.id].pts,0);
       return { ...p, ppg: pts/gp };
@@ -1164,5 +1213,9 @@ footer{
   }
 
   renderAll();
+
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{}); // ponytail: falha silenciosa fora do GitHub Pages (ex. preview do artifact), onde sw.js/manifest não existem
+  }
 })();
 </script>
