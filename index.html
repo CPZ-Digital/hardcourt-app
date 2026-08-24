@@ -231,8 +231,17 @@ input:focus,select:focus,button:focus-visible{
   display:flex;align-items:center;justify-content:center;
   background:var(--bg);border:1px solid var(--line);flex:none;
 }
-.roster-row .name{flex:1;font-weight:500;font-size:14.5px;}
-.roster-row button{background:none;border:none;color:var(--miss);cursor:pointer;font-size:11px;padding:4px 8px;font-family:'JetBrains Mono';text-transform:uppercase;letter-spacing:0.05em;}
+.roster-row .name{flex:1;font-weight:500;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.icon-btn{
+  flex:none;width:30px;height:30px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);border:1px solid var(--line);cursor:pointer;padding:0;
+}
+.icon-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;}
+.icon-btn.attrs{color:var(--accent);}
+.icon-btn.attrs.open{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+.icon-btn.danger{color:var(--miss);}
+.icon-btn.danger:hover{background:color-mix(in srgb, var(--miss) 16%, var(--surface-2));}
 
 /* SCORER */
 .scorer-head{
@@ -746,8 +755,12 @@ footer{
         <div class="roster-row">
           <span class="jersey">${escapeHtml(p.num)}</span>
           <span class="name">${escapeHtml(p.name)}</span>
-          <button data-pid="${p.id}" class="btn-toggle-attrs" style="color:var(--accent);">${open?'fechar':'ficha física'}</button>
-          <button data-pid="${p.id}" class="btn-remove-player">remover</button>
+          <button data-pid="${p.id}" class="icon-btn attrs btn-toggle-attrs ${open?'open':''}" title="${open?'Fechar ficha física':'Ficha física'}">
+            <svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1.5"></rect><path d="M9 3h6v2.5a1 1 0 0 1-1 1H10a1 1 0 0 1-1-1V3z"></path><line x1="8" y1="10.5" x2="16" y2="10.5"></line><line x1="8" y1="14" x2="16" y2="14"></line><line x1="8" y1="17.5" x2="13" y2="17.5"></line></svg>
+          </button>
+          <button data-pid="${p.id}" class="icon-btn danger btn-remove-player" title="Remover jogador">
+            <svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+          </button>
         </div>
         ${open ? `
         <div class="panel" style="margin:6px 0 0;padding:14px;">
