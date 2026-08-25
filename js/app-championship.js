@@ -8,12 +8,29 @@
   const SUPABASE_URL = 'https://rgyjvmpyyyatkaboksww.supabase.co';
   const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJneWp2bXB5eXlhdGthYm9rc3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc2MTUwMjUsImV4cCI6MjEwMzE5MTAyNX0.yOv951mh1LF4_lYW1SOG07Y75bMZJKVWw0qocJQaPQ0';
 
-  async function sb(path, opts={}){
+  // cliente só pra AUTH (login do organizador) — leitura/escrita de dados continua no fetch cru (sb) por manter
+  // o resto do módulo intacto; auth precisa do SDK pra sessão/refresh de token não virarem código nosso.
+  const supaAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  async function currentSession(){
+    const { data } = await supaAuth.auth.getSession();
+    return data.session;
+  }
+
+  // authed=true assina a chamada com o token do organizador logado (exigido pelas policies de escrita
+  // de campeonato/confronto/estatística); sem isso cai na anon key, só válida pra leitura e pro fluxo do técnico.
+  async function sb(path, opts={}, authed=false){
+    let bearer = SUPABASE_KEY;
+    if(authed){
+      const session = await currentSession();
+      if(!session) throw new Error('Sessão expirada — faça login de novo.');
+      bearer = session.access_token;
+    }
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...opts,
       headers: {
         apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
+        Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
         Prefer: 'return=representation',
         ...(opts.headers||{})
@@ -47,16 +64,16 @@
   }
 
   // roda uma escrita no Supabase com feedback visual e nova tentativa manual em caso de falha
-  async function sbWrite(path, opts, successMsg){
+  async function sbWrite(path, opts, successMsg, authed=false){
     showToast('Salvando…', 'loading');
     try{
-      const result = await sb(path, opts);
+      const result = await sb(path, opts, authed);
       showToast(successMsg || 'Salvo', 'success');
       return result;
     }catch(e){
       showToast('Falha ao salvar — sem conexão com o servidor. Toque pra tentar de novo.', 'error');
       const el = document.getElementById('sync-toast');
-      if(el) el.onclick = ()=>{ el.onclick=null; sbWrite(path, opts, successMsg); };
+      if(el) el.onclick = ()=>{ el.onclick=null; sbWrite(path, opts, successMsg, authed); };
       throw e;
     }
   }
@@ -77,14 +94,19 @@
 
   let champUI = { view:'loading', championship:null, teamId:null, pin:null, tree:null, error:null };
 
+  function goToDashboard(){
+    const url = new URL(location.href);
+    url.searchParams.delete('c');
+    history.replaceState(null, '', url);
+    renderChamp();
+  }
+
   async function renderChamp(){
     const el = document.getElementById('champ-body');
     const code = champCode();
 
     if(!code){
-      champUI.view = 'create';
-      el.innerHTML = champCreateHTML();
-      wireChampCreate();
+      await renderDashboard();
       return;
     }
 
@@ -103,9 +125,17 @@
     }
     champUI.championship = championship;
 
-    const session = loadChampSession(code);
-    if(session && session.teamId){
-      champUI.teamId = session.teamId; champUI.pin = session.pin;
+    // se quem abriu o link é o organizador logado dono deste campeonato, pula o cadastro de técnico
+    // e vai direto pro painel de scout — dono é validado no banco (owner_id), não no front.
+    const session = await currentSession();
+    if(session && championship.owner_id === session.user.id){
+      await renderChampOverall(championship, true);
+      return;
+    }
+
+    const teamSession = loadChampSession(code);
+    if(teamSession && teamSession.teamId){
+      champUI.teamId = teamSession.teamId; champUI.pin = teamSession.pin;
       await renderChampTeamPanel();
     } else {
       el.innerHTML = champJoinHTML(championship);
@@ -117,12 +147,41 @@
     return `<div class="panel"><div class="empty">${escapeHtml(msg)}</div></div>`;
   }
 
-  function champCreateHTML(){
-    return `
+  // ---------- DASHBOARD DO ORGANIZADOR (login + "meus campeonatos") ----------
+  async function renderDashboard(){
+    const el = document.getElementById('champ-body');
+    el.innerHTML = `<div class="panel"><div class="empty">Carregando…</div></div>`;
+    const session = await currentSession();
+    if(!session){
+      el.innerHTML = dashLoginHTML();
+      wireDashLogin();
+      return;
+    }
+    let mine;
+    try{
+      mine = await sb(`championships?owner_id=eq.${session.user.id}&select=*&order=created_at.desc`, {}, true);
+    }catch(e){
+      el.innerHTML = champErrorHTML('Não deu pra carregar seus campeonatos. Verifique a internet e volte a essa tela.');
+      return;
+    }
+    el.innerHTML = `
       <div class="panel">
-        <span class="eyebrow">Campeonato</span>
+        <span class="eyebrow">Organizador</span>
+        <h2>Meus campeonatos</h2>
+        <div style="color:var(--ink-dim);font-size:12.5px;margin-bottom:6px;">${escapeHtml(session.user.email)}</div>
+        <button class="btn ghost" id="btn-dash-logout">Sair da conta</button>
+        <div class="roster-list" style="margin-top:16px;">
+          ${mine.length ? mine.map(c=>`
+            <div class="roster-row">
+              <span class="name">${escapeHtml(c.name)}</span>
+              <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${escapeHtml(c.invite_code)}</span>
+              <button type="button" class="btn dash-open-champ" data-code="${escapeHtml(c.invite_code)}">Abrir</button>
+            </div>`).join('') : `<div class="empty">Nenhum campeonato criado ainda.</div>`}
+        </div>
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Novo</span>
         <h2>Criar campeonato</h2>
-        <p style="color:var(--ink-dim);font-size:13px;margin:-6px 0 16px;">Gera um link — cada técnico que abrir adiciona o próprio time, e você acompanha as estatísticas de todos num só lugar.</p>
         <div class="row row-stack">
           <input type="text" id="champ-name" placeholder="Nome do campeonato" style="flex:2;min-width:200px;">
           <button class="btn primary" id="btn-create-champ">Criar campeonato</button>
@@ -130,16 +189,26 @@
         <div id="champ-create-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--ink-dim);"></div>
       </div>
       <div class="panel" style="margin-top:16px;">
-        <span class="eyebrow">Já tenho um link</span>
-        <h2>Entrar num campeonato</h2>
+        <span class="eyebrow">Fui convidado</span>
+        <h2>Entrar num campeonato como técnico</h2>
         <div class="row row-stack">
           <input type="text" id="champ-code-input" placeholder="Código do convite (ex: A3F9K2)" style="flex:2;min-width:200px;text-transform:uppercase;">
           <button class="btn" id="btn-goto-champ">Entrar</button>
         </div>
       </div>`;
-  }
 
-  function wireChampCreate(){
+    document.getElementById('btn-dash-logout').addEventListener('click', async ()=>{
+      await supaAuth.auth.signOut();
+      renderDashboard();
+    });
+    el.querySelectorAll('.dash-open-champ').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const url = new URL(location.href);
+        url.searchParams.set('c', btn.dataset.code);
+        history.replaceState(null, '', url);
+        renderChamp();
+      });
+    });
     document.getElementById('btn-create-champ').addEventListener('click', async ()=>{
       const name = document.getElementById('champ-name').value.trim();
       const msg = document.getElementById('champ-create-msg');
@@ -151,7 +220,7 @@
           tries++;
           const code = genInviteCode();
           try{
-            const rows = await sb('championships', { method:'POST', body: JSON.stringify({ name, invite_code: code }) });
+            const rows = await sb('championships', { method:'POST', body: JSON.stringify({ name, invite_code: code, owner_id: session.user.id }) }, true);
             created = rows[0];
           }catch(e){ /* código colidiu, tenta outro */ }
         }
@@ -161,6 +230,61 @@
         history.replaceState(null, '', url);
         renderChamp();
       }catch(e){ msg.textContent = 'Erro ao criar campeonato.'; }
+    });
+    document.getElementById('btn-goto-champ').addEventListener('click', ()=>{
+      const code = document.getElementById('champ-code-input').value.trim().toUpperCase();
+      if(!code) return;
+      const url = new URL(location.href);
+      url.searchParams.set('c', code);
+      history.replaceState(null, '', url);
+      renderChamp();
+    });
+  }
+
+  function dashLoginHTML(){
+    return `
+      <div class="panel">
+        <span class="eyebrow">Organizador</span>
+        <h2>Entrar ou criar conta</h2>
+        <p style="color:var(--ink-dim);font-size:13px;margin:-6px 0 16px;">Só o organizador precisa de conta — pra criar campeonatos, gerenciar vários ao mesmo tempo e rodar o scout ao vivo dos confrontos. Técnico convidado não precisa: só usa o link.</p>
+        <div class="row row-stack">
+          <input type="text" id="dash-email" placeholder="E-mail" style="flex:1;min-width:200px;">
+          <input type="text" id="dash-pass" placeholder="Senha" style="flex:1;min-width:160px;">
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <button class="btn primary" id="btn-dash-login">Entrar</button>
+          <button class="btn" id="btn-dash-signup">Criar conta</button>
+        </div>
+        <div id="dash-login-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Fui convidado</span>
+        <h2>Entrar num campeonato como técnico</h2>
+        <div class="row row-stack">
+          <input type="text" id="champ-code-input" placeholder="Código do convite (ex: A3F9K2)" style="flex:2;min-width:200px;text-transform:uppercase;">
+          <button class="btn" id="btn-goto-champ">Entrar</button>
+        </div>
+      </div>`;
+  }
+
+  function wireDashLogin(){
+    const msg = document.getElementById('dash-login-msg');
+    document.getElementById('btn-dash-login').addEventListener('click', async ()=>{
+      const email = document.getElementById('dash-email').value.trim();
+      const password = document.getElementById('dash-pass').value;
+      msg.textContent = 'Entrando…';
+      const { error } = await supaAuth.auth.signInWithPassword({ email, password });
+      if(error){ msg.textContent = 'E-mail ou senha inválidos.'; return; }
+      renderDashboard();
+    });
+    document.getElementById('btn-dash-signup').addEventListener('click', async ()=>{
+      const email = document.getElementById('dash-email').value.trim();
+      const password = document.getElementById('dash-pass').value;
+      if(!email || password.length < 6){ msg.textContent = 'Preencha o e-mail e uma senha com 6+ caracteres.'; return; }
+      msg.textContent = 'Criando conta…';
+      const { error } = await supaAuth.auth.signUp({ email, password });
+      if(error){ msg.textContent = error.message; return; }
+      msg.textContent = 'Conta criada. Se pedir confirmação, confira seu e-mail antes de entrar.';
     });
     document.getElementById('btn-goto-champ').addEventListener('click', ()=>{
       const code = document.getElementById('champ-code-input').value.trim().toUpperCase();
@@ -189,9 +313,6 @@
           <button class="btn primary" id="btn-join-team">Entrar / criar time</button>
         </div>
         <div id="champ-join-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
-      </div>
-      <div class="panel" style="margin-top:16px;">
-        <button class="btn ghost" id="btn-view-only">Só quero ver o ranking geral (sou o organizador)</button>
       </div>`;
   }
 
@@ -222,9 +343,6 @@
         champUI.teamId = team.id; champUI.pin = pin;
         await renderChampTeamPanel();
       }catch(e){ msg.textContent = 'Erro ao entrar. Tenta de novo.'; }
-    });
-    document.getElementById('btn-view-only').addEventListener('click', async ()=>{
-      await renderChampOverall(championship, true);
     });
   }
 
@@ -314,7 +432,7 @@
           }).join('') : `<div class="empty">Nenhum confronto criado ainda.</div>`}
         </div>
       </div>`;
-    if(viewOnly) document.getElementById('btn-champ-back').addEventListener('click', renderChamp);
+    if(viewOnly) document.getElementById('btn-champ-back').addEventListener('click', goToDashboard);
     if(teams.length>=2){
       document.getElementById('btn-new-match').addEventListener('click', ()=> renderMatchSetup(championship, teams));
     }
@@ -344,7 +462,7 @@
       const teamBId = document.getElementById('match-team-b').value;
       if(teamAId===teamBId){ alert('Escolha dois times diferentes.'); return; }
       try{
-        const rows = await sbWrite('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: teamAId, team_b_id: teamBId }) }, 'Confronto criado');
+        const rows = await sbWrite('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: teamAId, team_b_id: teamBId }) }, 'Confronto criado', true);
         renderMatchRoster(championship, teams, rows[0]);
       }catch(e){}
     });
@@ -401,7 +519,7 @@
         on_court: !!starters[p.id]
       }));
       try{
-        if(rosterRows.length) await sbWrite('match_players', { method:'POST', body: JSON.stringify(rosterRows) }, 'Escalação salva');
+        if(rosterRows.length) await sbWrite('match_players', { method:'POST', body: JSON.stringify(rosterRows) }, 'Escalação salva', true);
         renderMatchLive(championship, teams, match.id);
       }catch(e){}
     });
@@ -493,7 +611,7 @@
             method:'POST',
             headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
             body: JSON.stringify({ match_id: matchId, player_id: btn.dataset.pid, pts:next.pts, reb:next.reb, ast:next.ast, fg3:next.fg3, stl:next.stl })
-          });
+          }, undefined, true);
           renderMatchLive(championship, teams, matchId);
         }catch(e){ btn.disabled = false; }
       });
@@ -501,7 +619,7 @@
     el.querySelectorAll('.sub-out').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         try{
-          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) }, 'Substituição feita');
+          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) }, 'Substituição feita', true);
           renderMatchLive(championship, teams, matchId);
         }catch(e){}
       });
@@ -509,14 +627,14 @@
     el.querySelectorAll('.sub-in').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         try{
-          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita');
+          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita', true);
           renderMatchLive(championship, teams, matchId);
         }catch(e){}
       });
     });
     document.getElementById('btn-finish-match').addEventListener('click', async ()=>{
       try{
-        await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) }, 'Confronto encerrado');
+        await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) }, 'Confronto encerrado', true);
         renderChampOverall(championship, true);
       }catch(e){}
     });
@@ -617,8 +735,8 @@
     const ctx = matchCourtCtx;
     if(!ctx || benchPid===onCourtPid) return;
     try{
-      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${onCourtPid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) });
-      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${benchPid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita');
+      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${onCourtPid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) }, undefined, true);
+      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${benchPid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita', true);
       renderMatchCourtMode();
     }catch(e){}
   }
@@ -647,7 +765,7 @@
             method:'POST',
             headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
             body: JSON.stringify({ match_id: ctx.matchId, player_id: pid, ...next })
-          });
+          }, undefined, true);
           const match = await fetchMatch(ctx.matchId);
           const newS = match.match_stats.find(x=>x.player_id===pid) || {};
           openMatchStatModal(pid, player, newS);
