@@ -141,6 +141,23 @@ nav button.active{
   cursor:pointer; min-height:44px;
 }
 .more-item:active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+
+.match-columns{ display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
+@media (min-width:900px){ .match-columns{ grid-template-columns:1fr 1fr; } }
+
+.sync-toast{
+  position:fixed; left:50%; bottom:20px; transform:translate(-50%,12px);
+  z-index:40; max-width:min(90vw,380px);
+  font-family:'JetBrains Mono'; font-size:12px; font-weight:600;
+  padding:11px 16px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink);
+  opacity:0; pointer-events:none; transition:opacity .15s, transform .15s;
+  text-align:center;
+}
+.sync-toast.show{ opacity:1; transform:translate(-50%,0); }
+.sync-toast.loading{ color:var(--ink-dim); }
+.sync-toast.success{ border-color:var(--make); color:var(--make); }
+.sync-toast.error{ border-color:var(--miss); color:var(--miss); pointer-events:auto; cursor:pointer; }
+@media (max-width:640px){ .sync-toast{ bottom:calc(66px + env(safe-area-inset-bottom)); } }
 @media (min-width:641px){
   .more-overlay{ align-items:center; }
   .more-sheet{ border-bottom:1px solid var(--line); }
@@ -1342,6 +1359,48 @@ footer{
     return text ? JSON.parse(text) : null;
   }
 
+  // toast fixo pra dar feedback de sincronizacao com o servidor (salvando/salvo/falhou)
+  let toastTimer = null;
+  function showToast(msg, kind){
+    let el = document.getElementById('sync-toast');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'sync-toast';
+      el.className = 'sync-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.className = 'sync-toast show ' + (kind||'');
+    clearTimeout(toastTimer);
+    if(kind !== 'loading'){
+      toastTimer = setTimeout(()=> el.classList.remove('show'), kind==='error' ? 4000 : 1400);
+    }
+  }
+  function hideToast(){
+    const el = document.getElementById('sync-toast');
+    if(el) el.classList.remove('show');
+  }
+
+  // roda uma escrita no Supabase com feedback visual e nova tentativa manual em caso de falha
+  async function sbWrite(path, opts, successMsg){
+    showToast('Salvando…', 'loading');
+    try{
+      const result = await sb(path, opts);
+      showToast(successMsg || 'Salvo', 'success');
+      return result;
+    }catch(e){
+      showToast('Falha ao salvar — sem conexão com o servidor. Toque pra tentar de novo.', 'error');
+      const el = document.getElementById('sync-toast');
+      if(el) el.onclick = ()=>{ el.onclick=null; sbWrite(path, opts, successMsg); };
+      throw e;
+    }
+  }
+
+  async function sha256(text){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
   function champCode(){ return new URLSearchParams(location.search).get('c') || ''; }
   function champSessionKey(code){ return `hardcourt-champ-session-${code}`; }
   function loadChampSession(code){ try{ return JSON.parse(localStorage.getItem(champSessionKey(code))||'null'); }catch(e){ return null; } }
@@ -1484,13 +1543,14 @@ footer{
       if(!name || !pin){ msg.textContent = 'Preencha o nome do time e um PIN.'; return; }
       msg.textContent = 'Entrando…';
       try{
+        const pinHash = await sha256(pin);
         const existing = await sb(`teams?championship_id=eq.${championship.id}&name=eq.${encodeURIComponent(name)}&select=*`);
         let team;
         if(existing && existing.length){
           team = existing[0];
-          if(team.pin !== pin){ msg.textContent = 'Já existe um time com esse nome e o PIN não confere.'; return; }
+          if(team.pin !== pinHash){ msg.textContent = 'Já existe um time com esse nome e o PIN não confere.'; return; }
         } else {
-          const rows = await sb('teams', { method:'POST', body: JSON.stringify({ championship_id: championship.id, name, pin }) });
+          const rows = await sb('teams', { method:'POST', body: JSON.stringify({ championship_id: championship.id, name, pin: pinHash }) });
           team = rows[0];
         }
         saveChampSession(championship.invite_code, { teamId: team.id, pin });
@@ -1504,38 +1564,43 @@ footer{
   }
 
   async function fetchChampTree(championshipId){
-    return sb(`teams?championship_id=eq.${championshipId}&select=id,name,players(id,name,num,attrs),games(id,opponent,finished,game_stats(player_id,pts,reb,ast,fg3,stl))`);
+    return sb(`teams?championship_id=eq.${championshipId}&select=id,name,players(id,name,num,attrs)`);
   }
 
-  function champRankingsFromTree(teams){
-    const rows = [];
-    teams.forEach(team=>{
-      team.players.forEach(p=>{
-        const finishedGames = team.games.filter(g=>g.finished);
-        const totals = {pts:0,reb:0,ast:0,fg3:0,stl:0};
-        let gp = 0;
-        finishedGames.forEach(g=>{
-          const s = g.game_stats.find(x=>x.player_id===p.id);
-          if(!s) return;
-          gp++;
-          totals.pts+=s.pts; totals.reb+=s.reb; totals.ast+=s.ast; totals.fg3+=s.fg3; totals.stl+=s.stl;
-        });
-        const div = gp||1;
-        rows.push({
-          name:p.name, num:p.num, team:team.name, gp,
-          ppg:totals.pts/div, rpg:totals.reb/div, apg:totals.ast/div, spg:totals.stl/div,
-          pts:totals.pts, reb:totals.reb, ast:totals.ast, fg3:totals.fg3, stl:totals.stl
-        });
+  // ranking geral agora vem só dos confrontos que o organizador roda no scout — o técnico convidado não registra jogo
+  async function fetchChampMatches(championshipId){
+    return sb(`matches?championship_id=eq.${championshipId}&select=id,finished,played_at,teamA:teams!matches_team_a_id_fkey(name),teamB:teams!matches_team_b_id_fkey(name),match_players(player_id,team_id,starter,players(name,num),teams(name)),match_stats(player_id,pts,reb,ast,fg3,stl)&order=played_at.desc`);
+  }
+
+  function champRankingsFromMatches(matches){
+    const byPlayer = {};
+    matches.filter(m=>m.finished).forEach(m=>{
+      m.match_players.forEach(mp=>{
+        if(!byPlayer[mp.player_id]){
+          byPlayer[mp.player_id] = { name:mp.players.name, num:mp.players.num, team:mp.teams.name, gp:0, pts:0,reb:0,ast:0,fg3:0,stl:0 };
+        }
+        const s = m.match_stats.find(x=>x.player_id===mp.player_id) || {pts:0,reb:0,ast:0,fg3:0,stl:0};
+        const row = byPlayer[mp.player_id];
+        row.gp++; row.pts+=s.pts; row.reb+=s.reb; row.ast+=s.ast; row.fg3+=s.fg3; row.stl+=s.stl;
       });
     });
-    return rows.sort((a,b)=>b.ppg-a.ppg);
+    return Object.values(byPlayer).map(r=>{
+      const div = r.gp||1;
+      return { ...r, ppg:r.pts/div, rpg:r.reb/div, apg:r.ast/div, spg:r.stl/div };
+    }).sort((a,b)=>b.ppg-a.ppg);
   }
 
   async function renderChampOverall(championship, viewOnly){
     const el = document.getElementById('champ-body');
-    el.innerHTML = `<div class="panel"><div class="empty">Carregando ranking geral…</div></div>`;
-    const teams = await fetchChampTree(championship.id);
-    const rows = champRankingsFromTree(teams);
+    el.innerHTML = `<div class="panel"><div class="empty">Carregando…</div></div>`;
+    let teams, matches;
+    try{
+      [teams, matches] = await Promise.all([ fetchChampTree(championship.id), fetchChampMatches(championship.id) ]);
+    }catch(e){
+      el.innerHTML = champErrorHTML('Não deu pra carregar os dados do campeonato. Verifique a internet e volte a essa tela.');
+      return;
+    }
+    const rows = champRankingsFromMatches(matches);
     const backBtn = viewOnly ? `<button class="btn ghost" id="btn-champ-back" style="margin-bottom:16px;">← voltar</button>` : '';
     el.innerHTML = `
       ${backBtn}
@@ -1559,14 +1624,38 @@ footer{
               <td>${escapeHtml(r.name)} <span style="color:var(--ink-dim);">#${escapeHtml(r.num||'—')}</span></td>
               <td>${escapeHtml(r.team)}</td>
               <td>${r.gp}</td><td>${r.ppg.toFixed(1)}</td><td>${r.rpg.toFixed(1)}</td><td>${r.apg.toFixed(1)}</td><td>${r.spg.toFixed(1)}</td>
-            </tr>`).join('') : `<tr><td colspan="8" class="empty">Nenhum jogo encerrado ainda em nenhum time.</td></tr>`}
+            </tr>`).join('') : `<tr><td colspan="8" class="empty">Nenhum confronto encerrado ainda.</td></tr>`}
           </tbody></table>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Histórico</span>
+        <h2>Confrontos</h2>
+        <div class="roster-list">
+          ${matches.length ? matches.map(m=>{
+            function scoreFor(teamName){
+              return m.match_stats.reduce((s,x)=>{
+                const mp = m.match_players.find(p=>p.player_id===x.player_id);
+                return (mp && mp.teams && mp.teams.name===teamName) ? s+x.pts : s;
+              },0);
+            }
+            const a = scoreFor(m.teamA.name), b = scoreFor(m.teamB.name);
+            const d = new Date(m.played_at);
+            return `<div class="roster-row">
+              <span class="name">${escapeHtml(m.teamA.name)} <span class="num" style="color:var(--ink-dim);">${a}</span> × <span class="num" style="color:var(--ink-dim);">${b}</span> ${escapeHtml(m.teamB.name)}</span>
+              <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${d.toLocaleDateString('pt-BR')} ${m.finished?'· encerrado':'· em andamento'}</span>
+              ${!m.finished ? `<button data-mid="${m.id}" class="btn-resume-match" style="color:var(--accent);">continuar</button>` : ''}
+            </div>`;
+          }).join('') : `<div class="empty">Nenhum confronto criado ainda.</div>`}
         </div>
       </div>`;
     if(viewOnly) document.getElementById('btn-champ-back').addEventListener('click', renderChamp);
     if(teams.length>=2){
       document.getElementById('btn-new-match').addEventListener('click', ()=> renderMatchSetup(championship, teams));
     }
+    el.querySelectorAll('.btn-resume-match').forEach(btn=>{
+      btn.addEventListener('click', ()=> renderMatchLive(championship, teams, btn.dataset.mid));
+    });
   }
 
   // ---------- SCOUT AO VIVO (confronto entre dois times do campeonato) ----------
@@ -1589,8 +1678,10 @@ footer{
       const teamAId = document.getElementById('match-team-a').value;
       const teamBId = document.getElementById('match-team-b').value;
       if(teamAId===teamBId){ alert('Escolha dois times diferentes.'); return; }
-      const rows = await sb('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: teamAId, team_b_id: teamBId }) });
-      renderMatchRoster(championship, teams, rows[0]);
+      try{
+        const rows = await sbWrite('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: teamAId, team_b_id: teamBId }) }, 'Confronto criado');
+        renderMatchRoster(championship, teams, rows[0]);
+      }catch(e){}
     });
   }
 
@@ -1644,8 +1735,10 @@ footer{
         starter: !!starters[p.id],
         on_court: !!starters[p.id]
       }));
-      if(rosterRows.length) await sb('match_players', { method:'POST', body: JSON.stringify(rosterRows) });
-      renderMatchLive(championship, teams, match.id);
+      try{
+        if(rosterRows.length) await sbWrite('match_players', { method:'POST', body: JSON.stringify(rosterRows) }, 'Escalação salva');
+        renderMatchLive(championship, teams, match.id);
+      }catch(e){}
     });
   }
 
@@ -1715,7 +1808,7 @@ footer{
         <h2>${escapeHtml(teamA.name)} ${teamScore(teamA)} × ${teamScore(teamB)} ${escapeHtml(teamB.name)}</h2>
         <button class="btn primary" id="btn-finish-match">Encerrar confronto</button>
       </div>
-      <div class="oncourt" style="grid-template-columns:1fr 1fr;align-items:start;">
+      <div class="match-columns">
         ${teamColumn(teamA)}
         ${teamColumn(teamB)}
       </div>`;
@@ -1727,51 +1820,58 @@ footer{
         const cur = statOf(btn.dataset.pid);
         const next = {...cur};
         Object.entries(changes).forEach(([k,v])=> next[k]=(next[k]||0)+v);
-        await sb(`match_stats?on_conflict=match_id,player_id`, {
-          method:'POST',
-          headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
-          body: JSON.stringify({ match_id: matchId, player_id: btn.dataset.pid, pts:next.pts, reb:next.reb, ast:next.ast, fg3:next.fg3, stl:next.stl })
-        });
-        renderMatchLive(championship, teams, matchId);
+        try{
+          await sbWrite(`match_stats?on_conflict=match_id,player_id`, {
+            method:'POST',
+            headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
+            body: JSON.stringify({ match_id: matchId, player_id: btn.dataset.pid, pts:next.pts, reb:next.reb, ast:next.ast, fg3:next.fg3, stl:next.stl })
+          });
+          renderMatchLive(championship, teams, matchId);
+        }catch(e){ btn.disabled = false; }
       });
     });
     el.querySelectorAll('.sub-out').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
-        await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) });
-        renderMatchLive(championship, teams, matchId);
+        try{
+          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) }, 'Substituição feita');
+          renderMatchLive(championship, teams, matchId);
+        }catch(e){}
       });
     });
     el.querySelectorAll('.sub-in').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
-        await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) });
-        renderMatchLive(championship, teams, matchId);
+        try{
+          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita');
+          renderMatchLive(championship, teams, matchId);
+        }catch(e){}
       });
     });
     document.getElementById('btn-finish-match').addEventListener('click', async ()=>{
-      await sb(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) });
-      renderChampOverall(championship, true);
+      try{
+        await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) }, 'Confronto encerrado');
+        renderChampOverall(championship, true);
+      }catch(e){}
     });
   }
 
+  // técnico convidado só cadastra o próprio elenco (titulares + reservas) — jogo, estatística, ranking e
+  // gráfico ficam exclusivos com o organizador/scout. Nada de "premium" aparece aqui de propósito.
   async function renderChampTeamPanel(){
     const el = document.getElementById('champ-body');
     const championship = champUI.championship;
     el.innerHTML = `<div class="panel"><div class="empty">Carregando seu time…</div></div>`;
-    const teams = await fetchChampTree(championship.id);
+    let teams;
+    try{ teams = await fetchChampTree(championship.id); }
+    catch(e){ el.innerHTML = champErrorHTML('Não deu pra conectar. Verifique a internet e volte a essa tela.'); return; }
     const myTeam = teams.find(t=>t.id===champUI.teamId);
-    champUI.tree = teams;
     if(!myTeam){ el.innerHTML = champErrorHTML('Time não encontrado — o campeonato pode ter sido apagado.'); return; }
-
-    const openGame = myTeam.games.find(g=>!g.finished);
 
     el.innerHTML = `
       <div class="panel">
         <span class="eyebrow">Campeonato · ${escapeHtml(championship.name)}</span>
         <h2>${escapeHtml(myTeam.name)}</h2>
-        <div class="row">
-          <button class="btn" id="btn-champ-overall">Ver ranking geral do campeonato</button>
-          <button class="btn ghost" id="btn-champ-leave">Sair deste time neste dispositivo</button>
-        </div>
+        <div style="color:var(--ink-dim);font-size:12.5px;margin-bottom:12px;">Cadastre aqui o elenco do seu time — titulares e reservas. Jogos e estatísticas ficam com o organizador.</div>
+        <button class="btn ghost" id="btn-champ-leave">Sair deste time neste dispositivo</button>
       </div>
 
       <div class="panel" style="margin-top:16px;">
@@ -1784,45 +1884,17 @@ footer{
         </div>
         <div class="roster-list" id="champ-roster" style="margin-top:12px;">
           ${myTeam.players.length ? myTeam.players.map(p=>`
-            <div class="roster-row"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span></div>
+            <div class="roster-row">
+              <span class="jersey">${escapeHtml(p.num||'—')}</span>
+              <span class="name">${escapeHtml(p.name)}</span>
+              <button type="button" class="icon-btn danger champ-remove-player" data-pid="${p.id}" title="Remover jogador">
+                <svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+              </button>
+            </div>
           `).join('') : `<div class="empty">Nenhum jogador ainda.</div>`}
         </div>
-      </div>
-
-      <div class="panel" style="margin-top:16px;">
-        <span class="eyebrow">Jogo</span>
-        <h2>${openGame ? 'Jogo em andamento: vs '+escapeHtml(openGame.opponent) : 'Iniciar jogo'}</h2>
-        ${!openGame ? `
-          <div class="row">
-            <input type="text" id="champ-opponent" placeholder="Time adversário" style="flex:1;min-width:160px;">
-            <button class="btn primary" id="champ-start-game" ${myTeam.players.length?'':'disabled'}>Iniciar</button>
-          </div>
-          ${!myTeam.players.length ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Cadastre jogadores primeiro.</div>` : ''}
-        ` : `
-          <div class="oncourt" id="champ-oncourt">
-            ${myTeam.players.map(p=>{
-              const s = (openGame.game_stats.find(x=>x.player_id===p.id)) || {pts:0,reb:0,ast:0,fg3:0,stl:0};
-              return `<div class="player-card">
-                <div class="pname"><span class="jersey">${escapeHtml(p.num||'—')}</span><strong>${escapeHtml(p.name)}</strong></div>
-                <div class="stat-grid">
-                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":2}'>+2 pontos</button>
-                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":3,"fg3":1}'>+3 pontos</button>
-                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":1}'>+1 livre</button>
-                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"reb":1}'>+ rebote</button>
-                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"ast":1}'>+ assist.</button>
-                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"stl":1}'>+ roubo</button>
-                </div>
-                <div class="live-line">${s.pts} pts · ${s.fg3} 3PM · ${s.reb} reb · ${s.ast} ast · ${s.stl} roubos</div>
-              </div>`;
-            }).join('')}
-          </div>
-          <div class="row" style="margin-top:16px;">
-            <button class="btn primary" id="champ-finish-game">Encerrar jogo</button>
-          </div>
-        `}
       </div>`;
 
-    document.getElementById('btn-champ-overall').addEventListener('click', ()=> renderChampOverall(championship, false));
     document.getElementById('btn-champ-leave').addEventListener('click', ()=>{
       localStorage.removeItem(champSessionKey(championship.invite_code));
       champUI.teamId = null;
@@ -1832,37 +1904,19 @@ footer{
       const name = document.getElementById('champ-player-name').value.trim();
       const num = document.getElementById('champ-player-num').value.trim();
       if(!name) return;
-      await sb('players', { method:'POST', body: JSON.stringify({ team_id: myTeam.id, name, num }) });
-      renderChampTeamPanel();
+      try{
+        await sbWrite('players', { method:'POST', body: JSON.stringify({ team_id: myTeam.id, name, num }) }, 'Jogador adicionado');
+        renderChampTeamPanel();
+      }catch(e){}
     });
-    if(!openGame && myTeam.players.length){
-      document.getElementById('champ-start-game').addEventListener('click', async ()=>{
-        const opponent = document.getElementById('champ-opponent').value.trim() || 'Adversário';
-        await sb('games', { method:'POST', body: JSON.stringify({ team_id: myTeam.id, opponent, finished:false }) });
-        renderChampTeamPanel();
-      });
-    }
-    if(openGame){
-      document.querySelectorAll('#champ-oncourt .stat-btn').forEach(btn=>{
-        btn.addEventListener('click', async ()=>{
-          btn.disabled = true;
-          const changes = JSON.parse(btn.dataset.changes);
-          const cur = openGame.game_stats.find(x=>x.player_id===btn.dataset.pid) || {pts:0,reb:0,ast:0,fg3:0,stl:0};
-          const next = {...cur};
-          Object.entries(changes).forEach(([k,v])=> next[k]=(next[k]||0)+v);
-          await sb(`game_stats?on_conflict=game_id,player_id`, {
-            method:'POST',
-            headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
-            body: JSON.stringify({ game_id: openGame.id, player_id: btn.dataset.pid, pts:next.pts, reb:next.reb, ast:next.ast, fg3:next.fg3, stl:next.stl })
-          });
+    document.querySelectorAll('.champ-remove-player').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        try{
+          await sbWrite(`players?id=eq.${btn.dataset.pid}`, { method:'DELETE' }, 'Jogador removido');
           renderChampTeamPanel();
-        });
+        }catch(e){}
       });
-      document.getElementById('champ-finish-game').addEventListener('click', async ()=>{
-        await sb(`games?id=eq.${openGame.id}`, { method:'PATCH', body: JSON.stringify({ finished:true }) });
-        renderChampTeamPanel();
-      });
-    }
+    });
   }
 
   if(champCode()) switchView('champ');
