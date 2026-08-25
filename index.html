@@ -121,6 +121,31 @@ nav button.active{
   color:var(--accent-ink);
 }
 
+.more-overlay{
+  display:none;
+  position:fixed; inset:0; z-index:30;
+  background:color-mix(in srgb, var(--bg) 75%, transparent);
+  align-items:flex-end; justify-content:center;
+}
+.more-overlay.open{ display:flex; }
+.more-sheet{
+  background:var(--surface); border:1px solid var(--line); border-bottom:none;
+  width:100%; max-width:420px; padding:18px 18px calc(18px + env(safe-area-inset-bottom));
+  display:flex; flex-direction:column; gap:8px;
+}
+.more-item{
+  font-family:'JetBrains Mono'; font-size:13.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:0.04em;
+  padding:14px 16px; text-align:left;
+  background:var(--surface-2); border:1px solid var(--line); color:var(--ink);
+  cursor:pointer; min-height:44px;
+}
+.more-item:active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+@media (min-width:641px){
+  .more-overlay{ align-items:center; }
+  .more-sheet{ border-bottom:1px solid var(--line); }
+}
+
 main{
   max-width:1080px;
   margin:0 auto;
@@ -404,20 +429,29 @@ footer{
     <small id="team-tag">— sem time selecionado</small>
   </div>
   <nav>
-    <button data-view="setup" class="active">Elenco</button>
-    <button data-view="games">Jogos</button>
-    <button data-view="scorer">Súmula</button>
+    <button data-view="scorer" class="active">Súmula</button>
     <button data-view="rankings">Rankings</button>
     <button data-view="athlete">Atleta</button>
-    <button data-view="draw">Sorteio</button>
-    <button data-view="champ">Campeonato</button>
+    <button data-view="champ" id="nav-champ" style="display:none;">Campeonato</button>
+    <button id="btn-more-menu">Mais</button>
   </nav>
 </header>
+
+<div id="more-overlay" class="more-overlay">
+  <div class="more-sheet">
+    <div class="eyebrow">Mais</div>
+    <button class="more-item" data-view="setup">Elenco</button>
+    <button class="more-item" data-view="games">Jogos</button>
+    <button class="more-item" data-view="draw">Sorteio</button>
+    <button class="more-item" data-view="champ">Campeonato</button>
+    <button class="btn ghost" id="btn-close-more" style="margin-top:10px;width:100%;">Fechar</button>
+  </div>
+</div>
 
 <main>
 
   <!-- SETUP -->
-  <section class="view active" id="view-setup">
+  <section class="view" id="view-setup">
     <div class="panel">
       <span class="eyebrow">Time</span>
       <h2>Selecionar ou criar time</h2>
@@ -454,7 +488,7 @@ footer{
   </section>
 
   <!-- SCORER -->
-  <section class="view" id="view-scorer">
+  <section class="view active" id="view-scorer">
     <div class="panel">
       <div id="scorer-empty" class="empty">
         <span class="display">Nenhum jogo em andamento</span>
@@ -587,8 +621,16 @@ footer{
 
   // ---------- VIEWS ----------
   const views = document.querySelectorAll('.view');
-  const navButtons = document.querySelectorAll('nav button');
-  navButtons.forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
+  const navButtons = document.querySelectorAll('nav button[data-view], .more-item[data-view]');
+  navButtons.forEach(b=>b.addEventListener('click',()=>{ switchView(b.dataset.view); closeMoreMenu(); }));
+
+  const moreOverlay = document.getElementById('more-overlay');
+  function openMoreMenu(){ moreOverlay.classList.add('open'); }
+  function closeMoreMenu(){ moreOverlay.classList.remove('open'); }
+  document.getElementById('btn-more-menu').addEventListener('click', openMoreMenu);
+  document.getElementById('btn-close-more').addEventListener('click', closeMoreMenu);
+  moreOverlay.addEventListener('click', e=>{ if(e.target===moreOverlay) closeMoreMenu(); });
+
   function switchView(name){
     views.forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
     navButtons.forEach(b=>b.classList.toggle('active', b.dataset.view===name));
@@ -597,6 +639,14 @@ footer{
     if(name==='scorer') renderScorer();
     if(name==='athlete'){ renderAthleteSelect(); renderAthlete(document.getElementById('athlete-select').value); }
     if(name==='champ') renderChamp();
+  }
+
+  // aba Campeonato só aparece na barra principal se já estiver vinculada a um campeonato (link ou sessão salva neste dispositivo)
+  function hasAnyChampSession(){
+    return Object.keys(localStorage).some(k=>k.startsWith('hardcourt-champ-session-'));
+  }
+  if(champCode() || hasAnyChampSession()){
+    document.getElementById('nav-champ').style.display = '';
   }
 
   // ---------- TEAM SELECT ----------
