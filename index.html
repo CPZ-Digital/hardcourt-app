@@ -1490,8 +1490,16 @@ footer{
     el.innerHTML = `
       ${backBtn}
       <div class="panel">
-        <span class="eyebrow">Campeonato</span>
-        <h2>${escapeHtml(championship.name)} — ranking geral</h2>
+        <span class="eyebrow">Organizador</span>
+        <h2>${escapeHtml(championship.name)}</h2>
+        <div class="row">
+          <button class="btn primary" id="btn-new-match" ${teams.length<2?'disabled':''}>Novo confronto (scout ao vivo)</button>
+        </div>
+        ${teams.length<2 ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Precisa de pelo menos 2 times cadastrados no campeonato.</div>` : ''}
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Temporada</span>
+        <h2>Ranking geral</h2>
         <div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11.5px;margin-bottom:14px;">${teams.length} time(s) participando</div>
         <div class="table-wrap">
           <table><thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Jogos</th><th>PPG</th><th>RPG</th><th>APG</th><th>SPG</th></tr></thead>
@@ -1506,6 +1514,193 @@ footer{
         </div>
       </div>`;
     if(viewOnly) document.getElementById('btn-champ-back').addEventListener('click', renderChamp);
+    if(teams.length>=2){
+      document.getElementById('btn-new-match').addEventListener('click', ()=> renderMatchSetup(championship, teams));
+    }
+  }
+
+  // ---------- SCOUT AO VIVO (confronto entre dois times do campeonato) ----------
+  function renderMatchSetup(championship, teams){
+    const el = document.getElementById('champ-body');
+    el.innerHTML = `
+      <button class="btn ghost" id="btn-match-back" style="margin-bottom:16px;">← voltar</button>
+      <div class="panel">
+        <span class="eyebrow">Novo confronto</span>
+        <h2>Escolha os dois times</h2>
+        <div class="row row-stack">
+          <select id="match-team-a" style="flex:1;min-width:160px;">${teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}</select>
+          <span style="align-self:center;color:var(--ink-dim);font-family:'JetBrains Mono';">vs</span>
+          <select id="match-team-b" style="flex:1;min-width:160px;">${teams.map((t,i)=>`<option value="${t.id}" ${i===1?'selected':''}>${escapeHtml(t.name)}</option>`).join('')}</select>
+        </div>
+        <button class="btn primary" id="btn-confirm-match" style="margin-top:14px;">Definir titulares e banco</button>
+      </div>`;
+    document.getElementById('btn-match-back').addEventListener('click', ()=> renderChampOverall(championship, true));
+    document.getElementById('btn-confirm-match').addEventListener('click', async ()=>{
+      const teamAId = document.getElementById('match-team-a').value;
+      const teamBId = document.getElementById('match-team-b').value;
+      if(teamAId===teamBId){ alert('Escolha dois times diferentes.'); return; }
+      const rows = await sb('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: teamAId, team_b_id: teamBId }) });
+      renderMatchRoster(championship, teams, rows[0]);
+    });
+  }
+
+  function renderMatchRoster(championship, teams, match){
+    const teamA = teams.find(t=>t.id===match.team_a_id);
+    const teamB = teams.find(t=>t.id===match.team_b_id);
+    const starters = {}; // player_id -> bool, default false (banco)
+
+    function teamBlock(team){
+      return `
+        <div class="panel">
+          <span class="eyebrow">${escapeHtml(team.name)}</span>
+          <h2>Titulares e banco</h2>
+          <div class="roster-list">
+            ${team.players.length ? team.players.map(p=>`
+              <div class="roster-row">
+                <span class="jersey">${escapeHtml(p.num||'—')}</span>
+                <span class="name">${escapeHtml(p.name)}</span>
+                <button type="button" class="filter-chip starter-toggle" data-pid="${p.id}" data-team="${team.id}">Banco</button>
+              </div>`).join('') : `<div class="empty">Time sem jogadores cadastrados.</div>`}
+          </div>
+        </div>`;
+    }
+
+    const el = document.getElementById('champ-body');
+    el.innerHTML = `
+      <button class="btn ghost" id="btn-roster-back" style="margin-bottom:16px;">← voltar</button>
+      <div class="panel">
+        <span class="eyebrow">Confronto</span>
+        <h2>${escapeHtml(teamA.name)} vs ${escapeHtml(teamB.name)}</h2>
+        <div style="color:var(--ink-dim);font-size:12.5px;">clique nos jogadores que vão começar em quadra como titulares — o resto entra como banco</div>
+      </div>
+      ${teamBlock(teamA)}
+      ${teamBlock(teamB)}
+      <button class="btn primary" id="btn-start-match" style="margin-top:6px;">Começar confronto</button>`;
+
+    document.getElementById('btn-roster-back').addEventListener('click', ()=> renderChampOverall(championship, true));
+    el.querySelectorAll('.starter-toggle').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const on = !starters[btn.dataset.pid];
+        starters[btn.dataset.pid] = on;
+        btn.classList.toggle('active', on);
+        btn.textContent = on ? 'Titular' : 'Banco';
+      });
+    });
+    document.getElementById('btn-start-match').addEventListener('click', async ()=>{
+      const rosterRows = [...teamA.players, ...teamB.players].map(p=>({
+        match_id: match.id,
+        player_id: p.id,
+        team_id: teamA.players.includes(p) ? teamA.id : teamB.id,
+        starter: !!starters[p.id],
+        on_court: !!starters[p.id]
+      }));
+      if(rosterRows.length) await sb('match_players', { method:'POST', body: JSON.stringify(rosterRows) });
+      renderMatchLive(championship, teams, match.id);
+    });
+  }
+
+  async function fetchMatch(matchId){
+    const rows = await sb(`matches?id=eq.${matchId}&select=*,match_players(player_id,team_id,starter,on_court),match_stats(player_id,pts,reb,ast,fg3,stl)`);
+    return rows[0];
+  }
+
+  async function renderMatchLive(championship, teams, matchId){
+    const el = document.getElementById('champ-body');
+    el.innerHTML = `<div class="panel"><div class="empty">Carregando confronto…</div></div>`;
+    const match = await fetchMatch(matchId);
+    const teamA = teams.find(t=>t.id===match.team_a_id);
+    const teamB = teams.find(t=>t.id===match.team_b_id);
+    const playersById = Object.fromEntries([...teamA.players, ...teamB.players].map(p=>[p.id,p]));
+
+    function statOf(pid){ return match.match_stats.find(s=>s.player_id===pid) || {pts:0,reb:0,ast:0,fg3:0,stl:0}; }
+
+    function teamScore(team){
+      return match.match_players.filter(mp=>mp.team_id===team.id).reduce((sum,mp)=>sum+statOf(mp.player_id).pts,0);
+    }
+
+    function teamColumn(team){
+      const roster = match.match_players.filter(mp=>mp.team_id===team.id);
+      const onCourt = roster.filter(mp=>mp.on_court);
+      const bench = roster.filter(mp=>!mp.on_court);
+      return `
+        <div class="panel">
+          <span class="eyebrow">${escapeHtml(team.name)}</span>
+          <div class="clock num" style="margin-bottom:14px;">${teamScore(team)}</div>
+          <div class="oncourt">
+            ${onCourt.map(mp=>{
+              const p = playersById[mp.player_id]; const s = statOf(mp.player_id);
+              return `<div class="player-card">
+                <div class="pname"><span class="jersey">${escapeHtml(p.num||'—')}</span><strong>${escapeHtml(p.name)}</strong></div>
+                <div class="stat-grid">
+                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":2}'>+2 pontos</button>
+                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":3,"fg3":1}'>+3 pontos</button>
+                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":1}'>+1 livre</button>
+                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"reb":1}'>+ rebote</button>
+                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"ast":1}'>+ assist.</button>
+                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"stl":1}'>+ roubo</button>
+                </div>
+                <div class="live-line">${s.pts} pts · ${s.fg3} 3PM · ${s.reb} reb · ${s.ast} ast · ${s.stl} roubos</div>
+                <button type="button" class="btn ghost sub-out" data-pid="${p.id}" style="margin-top:8px;width:100%;">↓ substituir (sai)</button>
+              </div>`;
+            }).join('')}
+          </div>
+          ${bench.length ? `
+          <div class="eyebrow" style="margin-top:16px;">Banco de reservas</div>
+          <div class="roster-list">
+            ${bench.map(mp=>{
+              const p = playersById[mp.player_id];
+              return `<div class="roster-row">
+                <span class="jersey">${escapeHtml(p.num||'—')}</span>
+                <span class="name">${escapeHtml(p.name)}</span>
+                <button type="button" class="btn sub-in" data-pid="${p.id}" style="color:var(--make);">↑ entra</button>
+              </div>`;
+            }).join('')}
+          </div>` : ''}
+        </div>`;
+    }
+
+    el.innerHTML = `
+      <div class="panel">
+        <span class="eyebrow">Confronto ao vivo</span>
+        <h2>${escapeHtml(teamA.name)} ${teamScore(teamA)} × ${teamScore(teamB)} ${escapeHtml(teamB.name)}</h2>
+        <button class="btn primary" id="btn-finish-match">Encerrar confronto</button>
+      </div>
+      <div class="oncourt" style="grid-template-columns:1fr 1fr;align-items:start;">
+        ${teamColumn(teamA)}
+        ${teamColumn(teamB)}
+      </div>`;
+
+    el.querySelectorAll('.stat-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        const changes = JSON.parse(btn.dataset.changes);
+        const cur = statOf(btn.dataset.pid);
+        const next = {...cur};
+        Object.entries(changes).forEach(([k,v])=> next[k]=(next[k]||0)+v);
+        await sb(`match_stats?on_conflict=match_id,player_id`, {
+          method:'POST',
+          headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
+          body: JSON.stringify({ match_id: matchId, player_id: btn.dataset.pid, pts:next.pts, reb:next.reb, ast:next.ast, fg3:next.fg3, stl:next.stl })
+        });
+        renderMatchLive(championship, teams, matchId);
+      });
+    });
+    el.querySelectorAll('.sub-out').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) });
+        renderMatchLive(championship, teams, matchId);
+      });
+    });
+    el.querySelectorAll('.sub-in').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) });
+        renderMatchLive(championship, teams, matchId);
+      });
+    });
+    document.getElementById('btn-finish-match').addEventListener('click', async ()=>{
+      await sb(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) });
+      renderChampOverall(championship, true);
+    });
   }
 
   async function renderChampTeamPanel(){
