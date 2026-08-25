@@ -1,6 +1,6 @@
 {
-  "name": "Hardcourt",
-  "short_name": "Hardcourt",
+  "name": "Statix",
+  "short_name": "Statix",
   "description": "Registro de jogo e rankings de basquete estilo NBA",
   "start_url": "./index.html",
   "scope": "./",

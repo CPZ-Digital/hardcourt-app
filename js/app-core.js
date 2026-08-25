@@ -1,7 +1,23 @@
 "use strict";
+  // migração de nome (Hardcourt -> Statix, 2026-08-25): copia os dados salvos sob as chaves antigas
+  // pras novas uma única vez, senão quem já usava o app perde time/campeonato salvo no dispositivo.
+  (function migrateStorageKeys(){
+    try{
+      if(localStorage.getItem('hardcourt-data') && !localStorage.getItem('statix-data')){
+        localStorage.setItem('statix-data', localStorage.getItem('hardcourt-data'));
+      }
+      Object.keys(localStorage).forEach(k=>{
+        if(k.startsWith('hardcourt-champ-session-')){
+          const newKey = k.replace('hardcourt-champ-session-', 'statix-champ-session-');
+          if(!localStorage.getItem(newKey)) localStorage.setItem(newKey, localStorage.getItem(k));
+        }
+      });
+    }catch(e){}
+  })();
+
   const store = {
-    read(){ try{ return JSON.parse(localStorage.getItem('hardcourt-data')||'{}'); }catch(e){ return {}; } },
-    write(d){ try{ localStorage.setItem('hardcourt-data', JSON.stringify(d)); }catch(e){} }
+    read(){ try{ return JSON.parse(localStorage.getItem('statix-data')||'{}'); }catch(e){ return {}; } },
+    write(d){ try{ localStorage.setItem('statix-data', JSON.stringify(d)); }catch(e){} }
   };
 
   const STAT_NAMES = { pts:'pontos', fg3:'cesta de 3', reb:'rebote', ast:'assistência', stl:'roubo de bola', pf:'falta' };
@@ -64,7 +80,7 @@
 
   // aba Campeonato só aparece na barra principal se já estiver vinculada a um campeonato (link ou sessão salva neste dispositivo)
   function hasAnyChampSession(){
-    return Object.keys(localStorage).some(k=>k.startsWith('hardcourt-champ-session-'));
+    return Object.keys(localStorage).some(k=>k.startsWith('statix-champ-session-'));
   }
   if(champCode() || hasAnyChampSession()){
     document.getElementById('nav-champ').style.display = '';

@@ -1,4 +1,4 @@
-const CACHE = 'hardcourt-v3';
+const CACHE = 'statix-v1';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './js/app-core.js', './js/app-scorer.js', './js/app-rankings.js', './js/app-athlete.js', './js/app-draw.js', './js/app-championship.js'

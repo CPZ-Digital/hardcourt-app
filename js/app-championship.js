@@ -111,7 +111,7 @@
   }
 
   function champCode(){ return new URLSearchParams(location.search).get('c') || ''; }
-  function champSessionKey(code){ return `hardcourt-champ-session-${code}`; }
+  function champSessionKey(code){ return `statix-champ-session-${code}`; }
   function loadChampSession(code){ try{ return JSON.parse(localStorage.getItem(champSessionKey(code))||'null'); }catch(e){ return null; } }
   function saveChampSession(code, session){ try{ localStorage.setItem(champSessionKey(code), JSON.stringify(session)); }catch(e){} }
   function genInviteCode(){
