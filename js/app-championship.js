@@ -101,9 +101,18 @@
     renderChamp();
   }
 
+  function watchParam(){ return new URLSearchParams(location.search).get('watch') || ''; }
+
   async function renderChamp(){
     const el = document.getElementById('champ-body');
     const code = champCode();
+    const watchId = watchParam();
+
+    // placar público — sem login, sem PIN, qualquer um com o link vê ao vivo (leitura já é aberta no RLS)
+    if(code && watchId){
+      await renderPublicMatch(code, watchId);
+      return;
+    }
 
     if(!code){
       await renderDashboard();
@@ -530,6 +539,87 @@
     return rows[0];
   }
 
+  // ---------- PLACAR PÚBLICO (link ?c=CODIGO&watch=MATCH_ID) ----------
+  // Sem login, sem PIN — qualquer um com o link vê o confronto ao vivo, só leitura.
+  // Reaproveita as classes visuais do Modo Quadra (court-diagram/court-chip) só pra exibir, sem drag nem clique.
+  function publicCourtHTML(team, roster, playersById, statOf){
+    const onCourt = roster.filter(mp=>mp.on_court);
+    const chips = onCourt.map((mp,i)=>{
+      const p = playersById[mp.player_id]; if(!p) return '';
+      const pos = COURT_SLOTS[i % COURT_SLOTS.length];
+      const s = statOf(mp.player_id);
+      return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;cursor:default;"><span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small></div>`;
+    }).join('');
+    return `
+      <div class="court-diagram" style="height:180px;margin-bottom:10px;">
+        <svg class="court-svg" viewBox="0 0 300 190" preserveAspectRatio="none">
+          <rect x="2" y="2" width="296" height="186" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <circle cx="150" cy="95" r="24" fill="none" stroke="currentColor" stroke-width="1"/>
+          <line x1="150" y1="2" x2="150" y2="188" stroke="currentColor" stroke-width="1"/>
+        </svg>
+        <div>${chips}</div>
+      </div>`;
+  }
+
+  async function renderPublicMatch(code, matchId){
+    const el = document.getElementById('champ-body');
+    el.innerHTML = `<div class="panel"><div class="empty">Carregando placar…</div></div>`;
+
+    let championship, teams, match;
+    try{
+      const rows = await sb(`championships?invite_code=eq.${encodeURIComponent(code)}&select=*`);
+      championship = rows && rows[0];
+      if(!championship) throw new Error('not found');
+      [teams, match] = await Promise.all([ fetchChampTree(championship.id), fetchMatch(matchId) ]);
+    }catch(e){
+      el.innerHTML = champErrorHTML('Não foi possível carregar esse placar. Verifique o link ou a internet.');
+      return;
+    }
+    if(!match){ el.innerHTML = champErrorHTML('Confronto não encontrado.'); return; }
+
+    const teamA = teams.find(t=>t.id===match.team_a_id);
+    const teamB = teams.find(t=>t.id===match.team_b_id);
+    const playersById = Object.fromEntries([...(teamA?.players||[]), ...(teamB?.players||[])].map(p=>[p.id,p]));
+    const statOf = pid => match.match_stats.find(s=>s.player_id===pid) || {pts:0,reb:0,ast:0,fg3:0,stl:0};
+    const scoreOf = team => match.match_players.filter(mp=>mp.team_id===team.id).reduce((s,mp)=>s+statOf(mp.player_id).pts,0);
+
+    function publicTeamPanel(team){
+      const roster = match.match_players.filter(mp=>mp.team_id===team.id);
+      const bench = roster.filter(mp=>!mp.on_court).map(mp=>playersById[mp.player_id]).filter(Boolean);
+      const lines = roster.filter(mp=>mp.on_court).map(mp=>{
+        const p = playersById[mp.player_id]; if(!p) return '';
+        const s = statOf(mp.player_id);
+        return `<div class="roster-row"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;white-space:nowrap;">${s.pts}p ${s.reb}r ${s.ast}a ${s.stl}rb</span></div>`;
+      }).join('');
+      return `
+        <div class="panel">
+          <span class="eyebrow">${escapeHtml(team.name)}</span>
+          <div class="clock num" style="margin-bottom:10px;">${scoreOf(team)}</div>
+          ${publicCourtHTML(team, roster, playersById, statOf)}
+          <div class="roster-list">${lines}</div>
+          ${bench.length ? `<div class="eyebrow" style="margin-top:14px;">Banco</div><div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:12px;">${bench.map(p=>`#${escapeHtml(p.num||'—')} ${escapeHtml(p.name)}`).join(' · ')}</div>` : ''}
+        </div>`;
+    }
+
+    el.innerHTML = `
+      <div class="panel">
+        <span class="eyebrow">${match.finished ? 'Confronto encerrado' : '🔴 Ao vivo'} · ${escapeHtml(championship.name)}</span>
+        <h2>${escapeHtml(teamA?.name||'?')} ${scoreOf(teamA)} × ${scoreOf(teamB)} ${escapeHtml(teamB?.name||'?')}</h2>
+      </div>
+      <div class="match-columns">
+        ${publicTeamPanel(teamA)}
+        ${publicTeamPanel(teamB)}
+      </div>`;
+
+    if(!match.finished){
+      setTimeout(()=>{
+        if(document.getElementById('view-champ')?.classList.contains('active') && watchParam()===matchId){
+          renderPublicMatch(code, matchId);
+        }
+      }, 8000);
+    }
+  }
+
   async function renderMatchLive(championship, teams, matchId){
     const el = document.getElementById('champ-body');
     el.innerHTML = `<div class="panel"><div class="empty">Carregando confronto…</div></div>`;
@@ -591,8 +681,10 @@
         <h2>${escapeHtml(teamA.name)} ${teamScore(teamA)} × ${teamScore(teamB)} ${escapeHtml(teamB.name)}</h2>
         <div class="row">
           <button class="btn" id="btn-match-court-mode">🏀 Modo quadra</button>
+          <button class="btn" id="btn-share-public">🔗 Compartilhar placar</button>
           <button class="btn primary" id="btn-finish-match">Encerrar confronto</button>
         </div>
+        <div id="share-public-msg" style="margin-top:8px;font-family:'JetBrains Mono';font-size:12px;color:var(--ink-dim);"></div>
       </div>
       <div class="match-columns">
         ${teamColumn(teamA)}
@@ -640,6 +732,11 @@
     });
     document.getElementById('btn-match-court-mode').addEventListener('click', ()=>{
       openMatchCourtMode(championship, teamA, teamB, matchId);
+    });
+    document.getElementById('btn-share-public').addEventListener('click', ()=>{
+      const link = `${location.origin}${location.pathname}?c=${championship.invite_code}&watch=${matchId}`;
+      navigator.clipboard?.writeText(link).catch(()=>{});
+      document.getElementById('share-public-msg').textContent = `Link copiado — qualquer um pode acompanhar ao vivo sem login: ${link}`;
     });
   }
 
