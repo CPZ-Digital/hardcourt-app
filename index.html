@@ -142,6 +142,66 @@ nav button.active{
 }
 .more-item:active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
 
+/* MODO QUADRA — visualização interativa da súmula, sempre em paisagem */
+.court-overlay{
+  display:none; position:fixed; inset:0; z-index:50;
+  background:var(--bg); overflow:hidden;
+}
+.court-overlay.open{ display:block; }
+.court-rotate-wrap{ width:100%; height:100%; }
+.court-stage{
+  width:100%; height:100%; display:flex; flex-direction:column; padding:14px;
+  background-image: linear-gradient(var(--bg-grid) 1px, transparent 1px), linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+  background-size:34px 34px;
+}
+/* em telas estreitas em pé (celular/tablet retrato), gira o conteúdo pra ocupar a tela como se estivesse em paisagem */
+@media (max-width:1024px) and (orientation:portrait){
+  .court-rotate-wrap{
+    position:fixed; top:0; left:0;
+    width:100vh; height:100vw;
+    transform-origin:top left;
+    transform: rotate(90deg) translateY(-100vw);
+  }
+}
+.court-topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex:none; }
+.court-topbar .num{ font-size:20px; color:var(--accent); }
+.court-diagram{
+  position:relative; flex:1; min-height:0;
+  border:1px solid var(--line); background:color-mix(in srgb, var(--court) 6%, var(--surface));
+}
+.court-svg{ position:absolute; inset:0; width:100%; height:100%; color:var(--line-bright); }
+#court-players{ position:absolute; inset:0; }
+.court-chip{
+  position:absolute; transform:translate(-50%,-50%);
+  width:52px; height:52px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; flex-direction:column;
+  background:var(--accent); color:var(--accent-ink); border:2px solid var(--bg);
+  font-family:'JetBrains Mono'; font-weight:700; font-size:15px;
+  cursor:pointer; user-select:none; box-shadow:0 0 12px -2px rgba(0,0,0,.5);
+  touch-action:none;
+}
+.court-chip small{ font-size:8px; font-weight:600; opacity:.85; }
+.court-chip.drag-over{ outline:3px solid var(--make); }
+.court-bench{ flex:none; margin-top:10px; max-height:96px; overflow-y:auto; }
+.court-bench-list{ display:flex; gap:8px; flex-wrap:wrap; }
+.court-bench-chip{
+  width:44px; height:44px; border-radius:50%; border:2px dashed var(--line);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'JetBrains Mono'; font-weight:700; font-size:13px; color:var(--ink);
+  background:var(--surface-2); cursor:grab; touch-action:none;
+}
+
+.court-modal{
+  display:none; position:fixed; inset:0; z-index:60;
+  background:color-mix(in srgb, var(--bg) 80%, transparent);
+  align-items:center; justify-content:center;
+}
+.court-modal.open{ display:flex; }
+.court-modal-box{
+  background:var(--surface); border:1px solid var(--line); padding:18px;
+  width:min(92vw,360px);
+}
+
 .match-columns{ display:grid; grid-template-columns:1fr; gap:14px; align-items:start; }
 @media (min-width:900px){ .match-columns{ grid-template-columns:1fr 1fr; } }
 
@@ -519,6 +579,9 @@ footer{
           </div>
           <div class="clock num" id="scorer-total">0 <span style="font-size:20px;color:var(--ink-dim);">PTS</span></div>
         </div>
+        <div class="row" style="margin-bottom:14px;">
+          <button class="btn" id="btn-court-mode">🏀 Modo quadra</button>
+        </div>
         <div class="oncourt" id="oncourt"></div>
         <div class="undo-bar">
           <button class="btn ghost" id="btn-undo">↩ Desfazer última</button>
@@ -530,6 +593,45 @@ footer{
       </div>
     </div>
   </section>
+
+  <!-- COURT MODE (modo extra, tela cheia rotacionada) -->
+  <div id="court-overlay" class="court-overlay">
+    <div class="court-rotate-wrap">
+      <div class="court-stage">
+        <div class="court-topbar">
+          <div id="court-score" class="num">vs —</div>
+          <button class="btn ghost" id="btn-close-court">✕ sair do modo quadra</button>
+        </div>
+        <div class="court-diagram" id="court-diagram">
+          <svg class="court-svg" viewBox="0 0 300 190" preserveAspectRatio="none">
+            <rect x="2" y="2" width="296" height="186" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <circle cx="150" cy="95" r="24" fill="none" stroke="currentColor" stroke-width="1"/>
+            <line x1="150" y1="2" x2="150" y2="188" stroke="currentColor" stroke-width="1"/>
+            <rect x="2" y="65" width="55" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
+            <rect x="243" y="65" width="55" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
+            <path d="M 2 30 A 120 120 0 0 1 2 160" fill="none" stroke="currentColor" stroke-width="1"/>
+            <path d="M 298 30 A 120 120 0 0 0 298 160" fill="none" stroke="currentColor" stroke-width="1"/>
+          </svg>
+          <div id="court-players"></div>
+        </div>
+        <div class="court-bench">
+          <div class="eyebrow" style="margin:0 0 8px;">Banco — arraste sobre um jogador em quadra pra substituir</div>
+          <div id="court-bench-list" class="court-bench-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="court-stat-modal" class="court-modal">
+    <div class="court-modal-box">
+      <div class="row" style="justify-content:space-between;">
+        <strong id="court-modal-name" class="display" style="font-size:20px;"></strong>
+        <button class="icon-btn" id="btn-close-stat-modal"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button>
+      </div>
+      <div id="court-modal-line" style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11.5px;margin:4px 0 12px;"></div>
+      <div class="stat-grid" id="court-modal-stats" style="grid-template-columns:repeat(3,1fr);"></div>
+    </div>
+  </div>
 
   <!-- RANKINGS -->
   <section class="view" id="view-rankings">
@@ -600,7 +702,7 @@ footer{
     write(d){ try{ localStorage.setItem('hardcourt-data', JSON.stringify(d)); }catch(e){} }
   };
 
-  const STAT_NAMES = { pts:'pontos', fg3:'cesta de 3', reb:'rebote', ast:'assistência', stl:'roubo de bola' };
+  const STAT_NAMES = { pts:'pontos', fg3:'cesta de 3', reb:'rebote', ast:'assistência', stl:'roubo de bola', pf:'falta' };
 
   // ponytail: lista única controla o formulário de ficha física e a exibição — trocar de esporte é só editar isto
   const ATTR_FIELDS = [
@@ -888,7 +990,8 @@ footer{
     const game = {
       id: uid(), opponent: opp, date: new Date().toISOString(),
       finished: false,
-      stats: Object.fromEntries(t.players.map(p=>[p.id,{pts:0,reb:0,ast:0,fg3:0,stl:0}])),
+      stats: Object.fromEntries(t.players.map(p=>[p.id,{pts:0,reb:0,ast:0,fg3:0,stl:0,pf:0}])),
+      onCourt: t.players.slice(0,5).map(p=>p.id),
       log: []
     };
     t.games.push(game);
@@ -928,7 +1031,7 @@ footer{
   function record(pid, changes){
     const g = currentGame();
     if(!g || g.finished) return;
-    Object.entries(changes).forEach(([type,delta])=>{ g.stats[pid][type] += delta; });
+    Object.entries(changes).forEach(([type,delta])=>{ g.stats[pid][type] = (g.stats[pid][type]||0) + delta; });
     g.log.push({ pid, changes, ts: Date.now() });
     save(); renderScorer();
   }
@@ -937,7 +1040,7 @@ footer{
     const g = currentGame();
     if(!g || !g.log.length) return;
     const last = g.log.pop();
-    Object.entries(last.changes).forEach(([type,delta])=>{ g.stats[last.pid][type] -= delta; });
+    Object.entries(last.changes).forEach(([type,delta])=>{ g.stats[last.pid][type] = (g.stats[last.pid][type]||0) - delta; });
     save(); renderScorer();
   });
 
@@ -989,6 +1092,128 @@ footer{
     document.getElementById('log').textContent = last
       ? `última: ${t.players.find(p=>p.id===last.pid)?.name || '—'} ` + Object.entries(last.changes).map(([k,v])=>`+${v} ${STAT_NAMES[k]||k}`).join(' ')
       : 'nenhum evento ainda';
+  }
+
+  // ---------- MODO QUADRA (visualização interativa, opcional) ----------
+  // slots em formação de arco, em % da área da quadra — não é posição real do jogador, é só layout fixo pros chips
+  const COURT_SLOTS = [[15,50],[35,20],[50,80],[65,20],[85,50]];
+
+  document.getElementById('btn-court-mode').addEventListener('click', ()=>{
+    if(!currentGame()){ alert('Inicie um jogo primeiro.'); return; }
+    document.getElementById('court-overlay').classList.add('open');
+    renderCourtMode();
+  });
+  document.getElementById('btn-close-court').addEventListener('click', ()=>{
+    document.getElementById('court-overlay').classList.remove('open');
+  });
+  document.getElementById('btn-close-stat-modal').addEventListener('click', ()=>{
+    document.getElementById('court-stat-modal').classList.remove('open');
+  });
+
+  function renderCourtMode(){
+    const t = team(); const g = currentGame();
+    if(!t || !g) return;
+    if(!g.onCourt || !g.onCourt.length) g.onCourt = t.players.slice(0,5).map(p=>p.id);
+
+    const total = Object.values(g.stats).reduce((s,x)=>s+(x.pts||0),0);
+    document.getElementById('court-score').textContent = `vs ${g.opponent} · ${total} pts`;
+
+    const onCourtPlayers = g.onCourt.map(pid=>t.players.find(p=>p.id===pid)).filter(Boolean);
+    const benchPlayers = t.players.filter(p=>!g.onCourt.includes(p.id));
+
+    const wrap = document.getElementById('court-players');
+    wrap.innerHTML = onCourtPlayers.map((p,i)=>{
+      const pos = COURT_SLOTS[i % COURT_SLOTS.length];
+      const s = g.stats[p.id] || {};
+      return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${p.id}">
+        <span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.court-chip').forEach(chip=>{
+      chip.addEventListener('click', ()=> openStatModal(chip.dataset.pid));
+    });
+
+    const benchList = document.getElementById('court-bench-list');
+    benchList.innerHTML = benchPlayers.length
+      ? benchPlayers.map(p=>`<div class="court-bench-chip" data-pid="${p.id}">${escapeHtml(p.num||'—')}</div>`).join('')
+      : `<div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">sem reservas cadastrados</div>`;
+    benchList.querySelectorAll('.court-bench-chip').forEach(chip=> enableBenchDrag(chip));
+  }
+
+  // arrastar (mouse ou toque, via Pointer Events) um jogador do banco sobre um jogador em quadra pra substituir
+  function enableBenchDrag(chipEl){
+    chipEl.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      const benchPid = chipEl.dataset.pid;
+      const ghost = chipEl.cloneNode(true);
+      ghost.style.position = 'fixed';
+      ghost.style.zIndex = '999';
+      ghost.style.pointerEvents = 'none';
+      ghost.style.opacity = '0.85';
+      ghost.style.left = (e.clientX - 22) + 'px';
+      ghost.style.top = (e.clientY - 22) + 'px';
+      document.body.appendChild(ghost);
+
+      function clearHighlights(){
+        document.querySelectorAll('.court-chip.drag-over').forEach(c=>c.classList.remove('drag-over'));
+      }
+      function move(ev){
+        ghost.style.left = (ev.clientX - 22) + 'px';
+        ghost.style.top = (ev.clientY - 22) + 'px';
+        clearHighlights();
+        const target = document.elementFromPoint(ev.clientX, ev.clientY);
+        const chip = target && target.closest('.court-chip');
+        if(chip) chip.classList.add('drag-over');
+      }
+      function up(ev){
+        document.removeEventListener('pointermove', move);
+        ghost.remove();
+        clearHighlights();
+        const target = document.elementFromPoint(ev.clientX, ev.clientY);
+        const chip = target && target.closest('.court-chip');
+        if(chip) substitutePlayer(benchPid, chip.dataset.pid);
+      }
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up, { once:true });
+    });
+  }
+
+  function substitutePlayer(benchPid, onCourtPid){
+    const g = currentGame();
+    if(!g || g.finished || benchPid===onCourtPid) return;
+    const idx = g.onCourt.indexOf(onCourtPid);
+    if(idx===-1) return;
+    g.onCourt[idx] = benchPid;
+    save();
+    renderCourtMode();
+  }
+
+  function openStatModal(pid){
+    const t = team(); const g = currentGame();
+    const p = t.players.find(x=>x.id===pid);
+    if(!p || !g) return;
+    const s = g.stats[pid] || {};
+    document.getElementById('court-modal-name').textContent = `#${p.num||'—'} ${p.name}`;
+    document.getElementById('court-modal-line').textContent =
+      `${s.pts||0} pontos · ${s.reb||0} rebotes · ${s.ast||0} assistências · ${s.stl||0} roubos · ${s.pf||0} faltas`;
+    const statsEl = document.getElementById('court-modal-stats');
+    statsEl.innerHTML = `
+      <button class="stat-btn make" data-changes='{"pts":2}'>+2 pontos</button>
+      <button class="stat-btn make" data-changes='{"pts":3,"fg3":1}'>+3 pontos</button>
+      <button class="stat-btn make" data-changes='{"pts":1}'>+1 livre</button>
+      <button class="stat-btn" data-changes='{"reb":1}'>+ rebote</button>
+      <button class="stat-btn" data-changes='{"ast":1}'>+ assist.</button>
+      <button class="stat-btn" data-changes='{"stl":1}'>+ roubo</button>
+      <button class="stat-btn miss" data-changes='{"pf":1}' style="grid-column:1 / -1;">+ falta pessoal</button>
+    `;
+    statsEl.querySelectorAll('.stat-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        record(pid, JSON.parse(btn.dataset.changes));
+        openStatModal(pid);
+        renderCourtMode();
+      });
+    });
+    document.getElementById('court-stat-modal').classList.add('open');
   }
 
   // ---------- RANKINGS ----------
