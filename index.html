@@ -600,6 +600,7 @@ footer{
       <div class="court-stage">
         <div class="court-topbar">
           <div id="court-score" class="num">vs —</div>
+          <div id="court-team-switch" class="row" style="display:none;gap:6px;"></div>
           <button class="btn ghost" id="btn-close-court">✕ sair do modo quadra</button>
         </div>
         <div class="court-diagram" id="court-diagram">
@@ -1100,11 +1101,18 @@ footer{
 
   document.getElementById('btn-court-mode').addEventListener('click', ()=>{
     if(!currentGame()){ alert('Inicie um jogo primeiro.'); return; }
+    matchCourtCtx = null;
+    document.getElementById('court-team-switch').style.display = 'none';
     document.getElementById('court-overlay').classList.add('open');
     renderCourtMode();
   });
   document.getElementById('btn-close-court').addEventListener('click', ()=>{
     document.getElementById('court-overlay').classList.remove('open');
+    if(matchCourtCtx){
+      const { championship, matchId } = matchCourtCtx;
+      matchCourtCtx = null;
+      fetchChampTree(championship.id).then(teams=> renderMatchLive(championship, teams, matchId));
+    }
   });
   document.getElementById('btn-close-stat-modal').addEventListener('click', ()=>{
     document.getElementById('court-stat-modal').classList.remove('open');
@@ -2031,7 +2039,10 @@ footer{
       <div class="panel">
         <span class="eyebrow">Confronto ao vivo</span>
         <h2>${escapeHtml(teamA.name)} ${teamScore(teamA)} × ${teamScore(teamB)} ${escapeHtml(teamB.name)}</h2>
-        <button class="btn primary" id="btn-finish-match">Encerrar confronto</button>
+        <div class="row">
+          <button class="btn" id="btn-match-court-mode">🏀 Modo quadra</button>
+          <button class="btn primary" id="btn-finish-match">Encerrar confronto</button>
+        </div>
       </div>
       <div class="match-columns">
         ${teamColumn(teamA)}
@@ -2077,6 +2088,142 @@ footer{
         renderChampOverall(championship, true);
       }catch(e){}
     });
+    document.getElementById('btn-match-court-mode').addEventListener('click', ()=>{
+      openMatchCourtMode(championship, teamA, teamB, matchId);
+    });
+  }
+
+  // Modo Quadra também pro confronto do organizador (dois times reais) — reaproveita o mesmo overlay
+  // usado na súmula individual, com uma aba pra trocar de time em quadra.
+  let matchCourtCtx = null;
+
+  function openMatchCourtMode(championship, teamA, teamB, matchId){
+    matchCourtCtx = { championship, teamA, teamB, matchId, activeTeamId: teamA.id };
+    document.getElementById('court-overlay').classList.add('open');
+    const switchBar = document.getElementById('court-team-switch');
+    switchBar.style.display = 'flex';
+    switchBar.innerHTML = `
+      <button type="button" class="filter-chip active" data-team="${teamA.id}">${escapeHtml(teamA.name)}</button>
+      <button type="button" class="filter-chip" data-team="${teamB.id}">${escapeHtml(teamB.name)}</button>`;
+    switchBar.querySelectorAll('button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        matchCourtCtx.activeTeamId = btn.dataset.team;
+        switchBar.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b===btn));
+        renderMatchCourtMode();
+      });
+    });
+    renderMatchCourtMode();
+  }
+
+  async function renderMatchCourtMode(){
+    const ctx = matchCourtCtx;
+    if(!ctx) return;
+    let match;
+    try{ match = await fetchMatch(ctx.matchId); }
+    catch(e){ showToast('Falha ao carregar o confronto.', 'error'); return; }
+
+    const teamPlayers = (ctx.activeTeamId===ctx.teamA.id ? ctx.teamA : ctx.teamB).players;
+    const playersById = Object.fromEntries(teamPlayers.map(p=>[p.id,p]));
+    const roster = match.match_players.filter(mp=>mp.team_id===ctx.activeTeamId);
+    const onCourtIds = roster.filter(mp=>mp.on_court).map(mp=>mp.player_id);
+    const benchIds = roster.filter(mp=>!mp.on_court).map(mp=>mp.player_id);
+    const statOf = pid => match.match_stats.find(s=>s.player_id===pid) || {};
+
+    const scoreOf = teamId => match.match_stats.reduce((s,x)=>{
+      const mp = match.match_players.find(p=>p.player_id===x.player_id);
+      return mp && mp.team_id===teamId ? s + (x.pts||0) : s;
+    },0);
+    document.getElementById('court-score').textContent = `${ctx.teamA.name} ${scoreOf(ctx.teamA.id)} × ${scoreOf(ctx.teamB.id)} ${ctx.teamB.name}`;
+
+    const wrap = document.getElementById('court-players');
+    wrap.innerHTML = onCourtIds.map((pid,i)=>{
+      const p = playersById[pid]; if(!p) return '';
+      const pos = COURT_SLOTS[i % COURT_SLOTS.length];
+      const s = statOf(pid);
+      return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${pid}">
+        <span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.court-chip').forEach(chip=>{
+      chip.addEventListener('click', ()=> openMatchStatModal(chip.dataset.pid, playersById[chip.dataset.pid], statOf(chip.dataset.pid)));
+    });
+
+    const benchList = document.getElementById('court-bench-list');
+    benchList.innerHTML = benchIds.length
+      ? benchIds.map(pid=>{ const p = playersById[pid]; return p ? `<div class="court-bench-chip" data-pid="${pid}">${escapeHtml(p.num||'—')}</div>` : ''; }).join('')
+      : `<div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">sem reservas</div>`;
+    benchList.querySelectorAll('.court-bench-chip').forEach(chip=> enableMatchBenchDrag(chip));
+  }
+
+  function enableMatchBenchDrag(chipEl){
+    chipEl.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      const benchPid = chipEl.dataset.pid;
+      const ghost = chipEl.cloneNode(true);
+      ghost.style.position = 'fixed'; ghost.style.zIndex = '999'; ghost.style.pointerEvents = 'none'; ghost.style.opacity = '0.85';
+      ghost.style.left = (e.clientX-22)+'px'; ghost.style.top = (e.clientY-22)+'px';
+      document.body.appendChild(ghost);
+      function clearHi(){ document.querySelectorAll('.court-chip.drag-over').forEach(c=>c.classList.remove('drag-over')); }
+      function move(ev){
+        ghost.style.left = (ev.clientX-22)+'px'; ghost.style.top = (ev.clientY-22)+'px';
+        clearHi();
+        const chip = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.court-chip');
+        if(chip) chip.classList.add('drag-over');
+      }
+      async function up(ev){
+        document.removeEventListener('pointermove', move);
+        ghost.remove(); clearHi();
+        const chip = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.court-chip');
+        if(chip) await matchSubstitute(benchPid, chip.dataset.pid);
+      }
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up, { once:true });
+    });
+  }
+
+  async function matchSubstitute(benchPid, onCourtPid){
+    const ctx = matchCourtCtx;
+    if(!ctx || benchPid===onCourtPid) return;
+    try{
+      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${onCourtPid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) });
+      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${benchPid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita');
+      renderMatchCourtMode();
+    }catch(e){}
+  }
+
+  function openMatchStatModal(pid, player, s){
+    const ctx = matchCourtCtx;
+    document.getElementById('court-modal-name').textContent = `#${player.num||'—'} ${player.name}`;
+    document.getElementById('court-modal-line').textContent =
+      `${s.pts||0} pontos · ${s.reb||0} rebotes · ${s.ast||0} assistências · ${s.stl||0} roubos`;
+    const statsEl = document.getElementById('court-modal-stats');
+    statsEl.innerHTML = `
+      <button class="stat-btn make" data-changes='{"pts":2}'>+2 pontos</button>
+      <button class="stat-btn make" data-changes='{"pts":3,"fg3":1}'>+3 pontos</button>
+      <button class="stat-btn make" data-changes='{"pts":1}'>+1 livre</button>
+      <button class="stat-btn" data-changes='{"reb":1}'>+ rebote</button>
+      <button class="stat-btn" data-changes='{"ast":1}'>+ assist.</button>
+      <button class="stat-btn" data-changes='{"stl":1}'>+ roubo</button>
+    `;
+    statsEl.querySelectorAll('.stat-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const changes = JSON.parse(btn.dataset.changes);
+        const next = { pts:s.pts||0, reb:s.reb||0, ast:s.ast||0, fg3:s.fg3||0, stl:s.stl||0 };
+        Object.entries(changes).forEach(([k,v])=> next[k]+=v);
+        try{
+          await sbWrite(`match_stats?on_conflict=match_id,player_id`, {
+            method:'POST',
+            headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
+            body: JSON.stringify({ match_id: ctx.matchId, player_id: pid, ...next })
+          });
+          const match = await fetchMatch(ctx.matchId);
+          const newS = match.match_stats.find(x=>x.player_id===pid) || {};
+          openMatchStatModal(pid, player, newS);
+          renderMatchCourtMode();
+        }catch(e){}
+      });
+    });
+    document.getElementById('court-stat-modal').classList.add('open');
   }
 
   // técnico convidado só cadastra o próprio elenco (titulares + reservas) — jogo, estatística, ranking e
