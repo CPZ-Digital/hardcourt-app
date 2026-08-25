@@ -542,13 +542,25 @@
   // ---------- PLACAR PÚBLICO (link ?c=CODIGO&watch=MATCH_ID) ----------
   // Sem login, sem PIN — qualquer um com o link vê o confronto ao vivo, só leitura.
   // Reaproveita as classes visuais do Modo Quadra (court-diagram/court-chip) só pra exibir, sem drag nem clique.
+  function openPublicStatModal(player, s){
+    document.getElementById('court-modal-name').textContent = `#${player.num||'—'} ${player.name}`;
+    document.getElementById('court-modal-line').textContent = 'nesta partida';
+    document.getElementById('court-modal-stats').innerHTML = `
+      <div class="stat-btn" style="cursor:default;">${s.pts||0}<br>pontos</div>
+      <div class="stat-btn make" style="cursor:default;">${s.fg3||0}<br>cestas de 3</div>
+      <div class="stat-btn" style="cursor:default;">${s.reb||0}<br>rebotes</div>
+      <div class="stat-btn" style="cursor:default;">${s.ast||0}<br>assist.</div>
+      <div class="stat-btn" style="cursor:default;">${s.stl||0}<br>roubos</div>`;
+    document.getElementById('court-stat-modal').classList.add('open');
+  }
+
   function publicCourtHTML(team, roster, playersById, statOf){
     const onCourt = roster.filter(mp=>mp.on_court);
     const chips = onCourt.map((mp,i)=>{
       const p = playersById[mp.player_id]; if(!p) return '';
       const pos = COURT_SLOTS[i % COURT_SLOTS.length];
       const s = statOf(mp.player_id);
-      return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;cursor:default;"><span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small></div>`;
+      return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${p.id}"><span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small></div>`;
     }).join('');
     return `
       <div class="court-diagram" style="height:180px;margin-bottom:10px;">
@@ -589,7 +601,7 @@
       const lines = roster.filter(mp=>mp.on_court).map(mp=>{
         const p = playersById[mp.player_id]; if(!p) return '';
         const s = statOf(mp.player_id);
-        return `<div class="roster-row"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;white-space:nowrap;">${s.pts}p ${s.reb}r ${s.ast}a ${s.stl}rb</span></div>`;
+        return `<div class="roster-row public-player-row" data-pid="${p.id}" style="cursor:pointer;"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;white-space:nowrap;">${s.pts}p ${s.reb}r ${s.ast}a ${s.stl}rb</span></div>`;
       }).join('');
       return `
         <div class="panel">
@@ -610,6 +622,13 @@
         ${publicTeamPanel(teamA)}
         ${publicTeamPanel(teamB)}
       </div>`;
+
+    el.querySelectorAll('.court-chip[data-pid], .public-player-row[data-pid]').forEach(node=>{
+      node.addEventListener('click', ()=>{
+        const p = playersById[node.dataset.pid];
+        if(p) openPublicStatModal(p, statOf(p.id));
+      });
+    });
 
     if(!match.finished){
       setTimeout(()=>{
