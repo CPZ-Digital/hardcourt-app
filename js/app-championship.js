@@ -83,6 +83,33 @@
     return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }
 
+  // estatística completa por jogador na partida — pts é coluna gerada no banco (2*fg2m + 3*fg3m + ftm),
+  // nunca mandar no INSERT/PATCH. Tempo de quadra soma o acumulado + o turno atual se ainda estiver em quadra.
+  const EMPTY_STAT = { fg2m:0, fg2a:0, fg3m:0, fg3a:0, ftm:0, fta:0, reb:0, ast:0, stl:0, pf:0, pts:0 };
+  function fmtMinutes(sec){ const m = Math.floor(sec/60), s = sec%60; return `${m}:${String(s).padStart(2,'0')}`; }
+  function mpSeconds(mp){
+    if(!mp) return 0;
+    let sec = mp.seconds_played || 0;
+    if(mp.on_court && mp.last_in_at) sec += Math.max(0, Math.round((Date.now() - new Date(mp.last_in_at).getTime())/1000));
+    return sec;
+  }
+  function statButtonsHTML(pid){
+    return `
+      <button class="stat-btn make" data-pid="${pid}" data-changes='{"fg2m":1,"fg2a":1}'>2pt ✓</button>
+      <button class="stat-btn miss" data-pid="${pid}" data-changes='{"fg2a":1}'>2pt ✗</button>
+      <button class="stat-btn make" data-pid="${pid}" data-changes='{"fg3m":1,"fg3a":1}'>3pt ✓</button>
+      <button class="stat-btn miss" data-pid="${pid}" data-changes='{"fg3a":1}'>3pt ✗</button>
+      <button class="stat-btn make" data-pid="${pid}" data-changes='{"ftm":1,"fta":1}'>ll ✓</button>
+      <button class="stat-btn miss" data-pid="${pid}" data-changes='{"fta":1}'>ll ✗</button>
+      <button class="stat-btn" data-pid="${pid}" data-changes='{"reb":1}'>+ rebote</button>
+      <button class="stat-btn" data-pid="${pid}" data-changes='{"ast":1}'>+ assist.</button>
+      <button class="stat-btn" data-pid="${pid}" data-changes='{"stl":1}'>+ roubo</button>
+      <button class="stat-btn miss" data-pid="${pid}" data-changes='{"pf":1}'>+ falta</button>`;
+  }
+  function statLineHTML(s, sec){
+    return `${s.pts||0} pts · ${s.fg2m}/${s.fg2a} 2pt · ${s.fg3m}/${s.fg3a} 3pt · ${s.ftm}/${s.fta} ll · ${s.reb} reb · ${s.ast} ast · ${s.stl} rb · ${s.pf} faltas · ${fmtMinutes(sec)} em quadra`;
+  }
+
   function champCode(){ return new URLSearchParams(location.search).get('c') || ''; }
   function champSessionKey(code){ return `hardcourt-champ-session-${code}`; }
   function loadChampSession(code){ try{ return JSON.parse(localStorage.getItem(champSessionKey(code))||'null'); }catch(e){ return null; } }
@@ -361,7 +388,7 @@
 
   // ranking geral agora vem só dos confrontos que o organizador roda no scout — o técnico convidado não registra jogo
   async function fetchChampMatches(championshipId){
-    return sb(`matches?championship_id=eq.${championshipId}&select=id,finished,played_at,teamA:teams!matches_team_a_id_fkey(name),teamB:teams!matches_team_b_id_fkey(name),match_players(player_id,team_id,starter,players(name,num),teams(name)),match_stats(player_id,pts,reb,ast,fg3,stl)&order=played_at.desc`);
+    return sb(`matches?championship_id=eq.${championshipId}&select=id,finished,played_at,teamA:teams!matches_team_a_id_fkey(name),teamB:teams!matches_team_b_id_fkey(name),match_players(player_id,team_id,starter,players(name,num),teams(name)),match_stats(player_id,pts,reb,ast,fg3m,stl)&order=played_at.desc`);
   }
 
   function champRankingsFromMatches(matches){
@@ -369,11 +396,11 @@
     matches.filter(m=>m.finished).forEach(m=>{
       m.match_players.forEach(mp=>{
         if(!byPlayer[mp.player_id]){
-          byPlayer[mp.player_id] = { name:mp.players.name, num:mp.players.num, team:mp.teams.name, gp:0, pts:0,reb:0,ast:0,fg3:0,stl:0 };
+          byPlayer[mp.player_id] = { name:mp.players.name, num:mp.players.num, team:mp.teams.name, gp:0, pts:0,reb:0,ast:0,fg3m:0,stl:0 };
         }
-        const s = m.match_stats.find(x=>x.player_id===mp.player_id) || {pts:0,reb:0,ast:0,fg3:0,stl:0};
+        const s = m.match_stats.find(x=>x.player_id===mp.player_id) || {pts:0,reb:0,ast:0,fg3m:0,stl:0};
         const row = byPlayer[mp.player_id];
-        row.gp++; row.pts+=s.pts; row.reb+=s.reb; row.ast+=s.ast; row.fg3+=s.fg3; row.stl+=s.stl;
+        row.gp++; row.pts+=s.pts; row.reb+=s.reb; row.ast+=s.ast; row.fg3m+=s.fg3m; row.stl+=s.stl;
       });
     });
     return Object.values(byPlayer).map(r=>{
@@ -520,12 +547,14 @@
       });
     });
     document.getElementById('btn-start-match').addEventListener('click', async ()=>{
+      const now = new Date().toISOString();
       const rosterRows = [...teamA.players, ...teamB.players].map(p=>({
         match_id: match.id,
         player_id: p.id,
         team_id: teamA.players.includes(p) ? teamA.id : teamB.id,
         starter: !!starters[p.id],
-        on_court: !!starters[p.id]
+        on_court: !!starters[p.id],
+        last_in_at: starters[p.id] ? now : null
       }));
       try{
         if(rosterRows.length) await sbWrite('match_players', { method:'POST', body: JSON.stringify(rosterRows) }, 'Escalação salva', true);
@@ -535,22 +564,26 @@
   }
 
   async function fetchMatch(matchId){
-    const rows = await sb(`matches?id=eq.${matchId}&select=*,match_players(player_id,team_id,starter,on_court),match_stats(player_id,pts,reb,ast,fg3,stl)`);
+    const rows = await sb(`matches?id=eq.${matchId}&select=*,match_players(player_id,team_id,starter,on_court,seconds_played,last_in_at),match_stats(player_id,pts,fg2m,fg2a,fg3m,fg3a,ftm,fta,reb,ast,stl,pf)`);
     return rows[0];
   }
 
   // ---------- PLACAR PÚBLICO (link ?c=CODIGO&watch=MATCH_ID) ----------
   // Sem login, sem PIN — qualquer um com o link vê o confronto ao vivo, só leitura.
   // Reaproveita as classes visuais do Modo Quadra (court-diagram/court-chip) só pra exibir, sem drag nem clique.
-  function openPublicStatModal(player, s){
+  function openPublicStatModal(player, s, mp){
     document.getElementById('court-modal-name').textContent = `#${player.num||'—'} ${player.name}`;
     document.getElementById('court-modal-line').textContent = 'nesta partida';
     document.getElementById('court-modal-stats').innerHTML = `
       <div class="stat-btn" style="cursor:default;">${s.pts||0}<br>pontos</div>
-      <div class="stat-btn make" style="cursor:default;">${s.fg3||0}<br>cestas de 3</div>
+      <div class="stat-btn" style="cursor:default;">${s.fg2m}/${s.fg2a}<br>2 pontos</div>
+      <div class="stat-btn make" style="cursor:default;">${s.fg3m}/${s.fg3a}<br>3 pontos</div>
+      <div class="stat-btn" style="cursor:default;">${s.ftm}/${s.fta}<br>lance livre</div>
       <div class="stat-btn" style="cursor:default;">${s.reb||0}<br>rebotes</div>
       <div class="stat-btn" style="cursor:default;">${s.ast||0}<br>assist.</div>
-      <div class="stat-btn" style="cursor:default;">${s.stl||0}<br>roubos</div>`;
+      <div class="stat-btn" style="cursor:default;">${s.stl||0}<br>roubos</div>
+      <div class="stat-btn miss" style="cursor:default;">${s.pf||0}<br>faltas</div>
+      <div class="stat-btn" style="cursor:default;">${fmtMinutes(mpSeconds(mp))}<br>em quadra</div>`;
     document.getElementById('court-stat-modal').classList.add('open');
   }
 
@@ -592,8 +625,9 @@
     const teamA = teams.find(t=>t.id===match.team_a_id);
     const teamB = teams.find(t=>t.id===match.team_b_id);
     const playersById = Object.fromEntries([...(teamA?.players||[]), ...(teamB?.players||[])].map(p=>[p.id,p]));
-    const statOf = pid => match.match_stats.find(s=>s.player_id===pid) || {pts:0,reb:0,ast:0,fg3:0,stl:0};
-    const scoreOf = team => match.match_players.filter(mp=>mp.team_id===team.id).reduce((s,mp)=>s+statOf(mp.player_id).pts,0);
+    const statOf = pid => match.match_stats.find(s=>s.player_id===pid) || EMPTY_STAT;
+    const mpOf = pid => match.match_players.find(mp=>mp.player_id===pid);
+    const scoreOf = team => match.match_players.filter(mp=>mp.team_id===team.id).reduce((s,mp)=>s+(statOf(mp.player_id).pts||0),0);
 
     function publicTeamPanel(team){
       const roster = match.match_players.filter(mp=>mp.team_id===team.id);
@@ -601,7 +635,7 @@
       const lines = roster.filter(mp=>mp.on_court).map(mp=>{
         const p = playersById[mp.player_id]; if(!p) return '';
         const s = statOf(mp.player_id);
-        return `<div class="roster-row public-player-row" data-pid="${p.id}" style="cursor:pointer;"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;white-space:nowrap;">${s.pts}p ${s.reb}r ${s.ast}a ${s.stl}rb</span></div>`;
+        return `<div class="roster-row public-player-row" data-pid="${p.id}" style="cursor:pointer;"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;white-space:nowrap;">${s.pts}p ${s.reb}r ${s.ast}a ${s.stl}rb ${s.pf}f · ${fmtMinutes(mpSeconds(mp))}</span></div>`;
       }).join('');
       return `
         <div class="panel">
@@ -626,7 +660,7 @@
     el.querySelectorAll('.court-chip[data-pid], .public-player-row[data-pid]').forEach(node=>{
       node.addEventListener('click', ()=>{
         const p = playersById[node.dataset.pid];
-        if(p) openPublicStatModal(p, statOf(p.id));
+        if(p) openPublicStatModal(p, statOf(p.id), mpOf(p.id));
       });
     });
 
@@ -647,10 +681,11 @@
     const teamB = teams.find(t=>t.id===match.team_b_id);
     const playersById = Object.fromEntries([...teamA.players, ...teamB.players].map(p=>[p.id,p]));
 
-    function statOf(pid){ return match.match_stats.find(s=>s.player_id===pid) || {pts:0,reb:0,ast:0,fg3:0,stl:0}; }
+    function statOf(pid){ return match.match_stats.find(s=>s.player_id===pid) || EMPTY_STAT; }
+    function mpOf(pid){ return match.match_players.find(mp=>mp.player_id===pid); }
 
     function teamScore(team){
-      return match.match_players.filter(mp=>mp.team_id===team.id).reduce((sum,mp)=>sum+statOf(mp.player_id).pts,0);
+      return match.match_players.filter(mp=>mp.team_id===team.id).reduce((sum,mp)=>sum+(statOf(mp.player_id).pts||0),0);
     }
 
     function teamColumn(team){
@@ -667,14 +702,9 @@
               return `<div class="player-card">
                 <div class="pname"><span class="jersey">${escapeHtml(p.num||'—')}</span><strong>${escapeHtml(p.name)}</strong></div>
                 <div class="stat-grid">
-                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":2}'>+2 pontos</button>
-                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":3,"fg3":1}'>+3 pontos</button>
-                  <button class="stat-btn make" data-pid="${p.id}" data-changes='{"pts":1}'>+1 livre</button>
-                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"reb":1}'>+ rebote</button>
-                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"ast":1}'>+ assist.</button>
-                  <button class="stat-btn" data-pid="${p.id}" data-changes='{"stl":1}'>+ roubo</button>
+                  ${statButtonsHTML(p.id)}
                 </div>
-                <div class="live-line">${s.pts} pts · ${s.fg3} 3PM · ${s.reb} reb · ${s.ast} ast · ${s.stl} roubos</div>
+                <div class="live-line">${statLineHTML(s, mpSeconds(mp))}</div>
                 <button type="button" class="btn ghost sub-out" data-pid="${p.id}" style="margin-top:8px;width:100%;">↓ substituir (sai)</button>
               </div>`;
             }).join('')}
@@ -721,7 +751,7 @@
           await sbWrite(`match_stats?on_conflict=match_id,player_id`, {
             method:'POST',
             headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
-            body: JSON.stringify({ match_id: matchId, player_id: btn.dataset.pid, pts:next.pts, reb:next.reb, ast:next.ast, fg3:next.fg3, stl:next.stl })
+            body: JSON.stringify({ match_id: matchId, player_id: btn.dataset.pid, fg2m:next.fg2m, fg2a:next.fg2a, fg3m:next.fg3m, fg3a:next.fg3a, ftm:next.ftm, fta:next.fta, reb:next.reb, ast:next.ast, stl:next.stl, pf:next.pf })
           }, undefined, true);
           renderMatchLive(championship, teams, matchId);
         }catch(e){ btn.disabled = false; }
@@ -729,8 +759,9 @@
     });
     el.querySelectorAll('.sub-out').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
+        const mp = mpOf(btn.dataset.pid);
         try{
-          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) }, 'Substituição feita', true);
+          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:false, seconds_played: mpSeconds(mp), last_in_at:null }) }, 'Substituição feita', true);
           renderMatchLive(championship, teams, matchId);
         }catch(e){}
       });
@@ -738,13 +769,16 @@
     el.querySelectorAll('.sub-in').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         try{
-          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita', true);
+          await sbWrite(`match_players?match_id=eq.${matchId}&player_id=eq.${btn.dataset.pid}`, { method:'PATCH', body: JSON.stringify({ on_court:true, last_in_at:new Date().toISOString() }) }, 'Substituição feita', true);
           renderMatchLive(championship, teams, matchId);
         }catch(e){}
       });
     });
     document.getElementById('btn-finish-match').addEventListener('click', async ()=>{
       try{
+        for(const mp of match.match_players.filter(x=>x.on_court && x.last_in_at)){
+          await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ seconds_played: mpSeconds(mp), last_in_at:null }) }, true);
+        }
         await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) }, 'Confronto encerrado', true);
         renderChampOverall(championship, true);
       }catch(e){}
@@ -793,7 +827,7 @@
     const roster = match.match_players.filter(mp=>mp.team_id===ctx.activeTeamId);
     const onCourtIds = roster.filter(mp=>mp.on_court).map(mp=>mp.player_id);
     const benchIds = roster.filter(mp=>!mp.on_court).map(mp=>mp.player_id);
-    const statOf = pid => match.match_stats.find(s=>s.player_id===pid) || {};
+    const statOf = pid => match.match_stats.find(s=>s.player_id===pid) || EMPTY_STAT;
 
     const scoreOf = teamId => match.match_stats.reduce((s,x)=>{
       const mp = match.match_players.find(p=>p.player_id===x.player_id);
@@ -811,7 +845,8 @@
       </div>`;
     }).join('');
     wrap.querySelectorAll('.court-chip').forEach(chip=>{
-      chip.addEventListener('click', ()=> openMatchStatModal(chip.dataset.pid, playersById[chip.dataset.pid], statOf(chip.dataset.pid)));
+      const mp = roster.find(m=>m.player_id===chip.dataset.pid);
+      chip.addEventListener('click', ()=> openMatchStatModal(chip.dataset.pid, playersById[chip.dataset.pid], statOf(chip.dataset.pid), mp));
     });
 
     const benchList = document.getElementById('court-bench-list');
@@ -851,40 +886,35 @@
     const ctx = matchCourtCtx;
     if(!ctx || benchPid===onCourtPid) return;
     try{
-      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${onCourtPid}`, { method:'PATCH', body: JSON.stringify({ on_court:false }) }, undefined, true);
-      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${benchPid}`, { method:'PATCH', body: JSON.stringify({ on_court:true }) }, 'Substituição feita', true);
+      const match = await fetchMatch(ctx.matchId);
+      const outMp = match.match_players.find(mp=>mp.player_id===onCourtPid);
+      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${onCourtPid}`, { method:'PATCH', body: JSON.stringify({ on_court:false, seconds_played: mpSeconds(outMp), last_in_at:null }) }, undefined, true);
+      await sbWrite(`match_players?match_id=eq.${ctx.matchId}&player_id=eq.${benchPid}`, { method:'PATCH', body: JSON.stringify({ on_court:true, last_in_at:new Date().toISOString() }) }, 'Substituição feita', true);
       renderMatchCourtMode();
     }catch(e){}
   }
 
-  function openMatchStatModal(pid, player, s){
+  function openMatchStatModal(pid, player, s, mp){
     const ctx = matchCourtCtx;
     document.getElementById('court-modal-name').textContent = `#${player.num||'—'} ${player.name}`;
-    document.getElementById('court-modal-line').textContent =
-      `${s.pts||0} pontos · ${s.reb||0} rebotes · ${s.ast||0} assistências · ${s.stl||0} roubos`;
+    document.getElementById('court-modal-line').textContent = statLineHTML(s, mpSeconds(mp));
     const statsEl = document.getElementById('court-modal-stats');
-    statsEl.innerHTML = `
-      <button class="stat-btn make" data-changes='{"pts":2}'>+2 pontos</button>
-      <button class="stat-btn make" data-changes='{"pts":3,"fg3":1}'>+3 pontos</button>
-      <button class="stat-btn make" data-changes='{"pts":1}'>+1 livre</button>
-      <button class="stat-btn" data-changes='{"reb":1}'>+ rebote</button>
-      <button class="stat-btn" data-changes='{"ast":1}'>+ assist.</button>
-      <button class="stat-btn" data-changes='{"stl":1}'>+ roubo</button>
-    `;
+    statsEl.innerHTML = statButtonsHTML(pid);
     statsEl.querySelectorAll('.stat-btn').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         const changes = JSON.parse(btn.dataset.changes);
-        const next = { pts:s.pts||0, reb:s.reb||0, ast:s.ast||0, fg3:s.fg3||0, stl:s.stl||0 };
-        Object.entries(changes).forEach(([k,v])=> next[k]+=v);
+        const next = { ...EMPTY_STAT, ...s };
+        Object.entries(changes).forEach(([k,v])=> next[k]=(next[k]||0)+v);
         try{
           await sbWrite(`match_stats?on_conflict=match_id,player_id`, {
             method:'POST',
             headers:{ Prefer:'resolution=merge-duplicates,return=representation' },
-            body: JSON.stringify({ match_id: ctx.matchId, player_id: pid, ...next })
+            body: JSON.stringify({ match_id: ctx.matchId, player_id: pid, fg2m:next.fg2m, fg2a:next.fg2a, fg3m:next.fg3m, fg3a:next.fg3a, ftm:next.ftm, fta:next.fta, reb:next.reb, ast:next.ast, stl:next.stl, pf:next.pf })
           }, undefined, true);
           const match = await fetchMatch(ctx.matchId);
-          const newS = match.match_stats.find(x=>x.player_id===pid) || {};
-          openMatchStatModal(pid, player, newS);
+          const newS = match.match_stats.find(x=>x.player_id===pid) || EMPTY_STAT;
+          const newMp = match.match_players.find(x=>x.player_id===pid);
+          openMatchStatModal(pid, player, newS, newMp);
           renderMatchCourtMode();
         }catch(e){}
       });
