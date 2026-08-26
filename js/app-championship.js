@@ -5,12 +5,8 @@
   // do app (que continua 100% local por dispositivo) pra não arriscar
   // quebrar o que já funciona.
   // =====================================================================
-  const SUPABASE_URL = 'https://rgyjvmpyyyatkaboksww.supabase.co';
-  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJneWp2bXB5eXlhdGthYm9rc3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc2MTUwMjUsImV4cCI6MjEwMzE5MTAyNX0.yOv951mh1LF4_lYW1SOG07Y75bMZJKVWw0qocJQaPQ0';
-
-  // cliente só pra AUTH (login do organizador) — leitura/escrita de dados continua no fetch cru (sb) por manter
-  // o resto do módulo intacto; auth precisa do SDK pra sessão/refresh de token não virarem código nosso.
-  const supaAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // SUPABASE_URL, SUPABASE_KEY e o cliente supaAuth já vêm declarados globalmente por js/app-gate.js
+  // (que carrega antes pra travar o app inteiro) — reaproveitados aqui, não redeclarar.
 
   async function currentSession(){
     const { data } = await supaAuth.auth.getSession();

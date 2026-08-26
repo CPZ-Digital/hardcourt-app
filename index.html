@@ -495,7 +495,20 @@ footer{
   body.print-athlete *{color:#111!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   body.print-athlete .num{color:#111!important;text-shadow:none!important;}
 }
+
+/* GATE — trava o app inteiro atrás de login+licença, exceto o fluxo de convite (?c=CODIGO) do técnico */
+.auth-gate{ display:none; position:fixed; inset:0; z-index:500; background:var(--bg); align-items:center; justify-content:center; padding:24px; overflow-y:auto; }
+.auth-gate.open{ display:flex; }
+.auth-gate-inner{ max-width:420px; width:100%; }
 </style>
+
+<div id="auth-gate" class="auth-gate">
+  <div class="auth-gate-inner">
+    <div class="panel" id="gate-body">
+      <div class="empty">Carregando…</div>
+    </div>
+  </div>
+</div>
 
 <header>
   <div class="brand">
@@ -694,10 +707,11 @@ footer{
 
 <footer>Statix — beta · dados salvos neste dispositivo</footer>
 
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="js/app-gate.js"></script>
 <script src="js/app-core.js"></script>
 <script src="js/app-scorer.js"></script>
 <script src="js/app-rankings.js"></script>
 <script src="js/app-athlete.js"></script>
 <script src="js/app-draw.js"></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="js/app-championship.js"></script>
