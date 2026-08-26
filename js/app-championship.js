@@ -467,7 +467,22 @@
         <div class="row">
           <button class="btn primary" id="btn-new-match" ${teams.length<2?'disabled':''}>Novo confronto (scout ao vivo)</button>
         </div>
-        ${teams.length<2 ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Precisa de pelo menos 2 times cadastrados no campeonato — mande o link de convite acima pros técnicos.</div>` : ''}
+        ${teams.length<2 ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Precisa de pelo menos 2 times cadastrados no campeonato — mande o link de convite acima pros técnicos, ou cadastre um time você mesmo abaixo.</div>` : ''}
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Times</span>
+        <h2>Times do campeonato</h2>
+        <div class="roster-list" style="margin-bottom:16px;">
+          ${teams.length ? teams.map(t=>`<div class="roster-row"><span class="name">${escapeHtml(t.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${t.players.length} jogador(es)</span></div>`).join('') : `<div class="empty">Nenhum time cadastrado ainda.</div>`}
+        </div>
+        <div class="eyebrow">Cadastrar time sem link de convite</div>
+        <p style="color:var(--ink-dim);font-size:12.5px;margin:-4px 0 12px;">Útil se o técnico não vai usar o app — você cadastra o time e o elenco direto por aqui.</p>
+        <div class="row row-stack">
+          <input type="text" id="champ-newteam-name" placeholder="Nome do time" style="flex:1;min-width:160px;">
+          <input type="text" id="champ-newteam-pin" placeholder="PIN (crie um, pra se precisar depois)" style="max-width:220px;" inputmode="numeric" maxlength="8">
+          <button class="btn primary" id="btn-champ-newteam">Adicionar time</button>
+        </div>
+        <div id="champ-newteam-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
       </div>
       <div class="panel" style="margin-top:16px;">
         <span class="eyebrow">Temporada</span>
@@ -507,6 +522,18 @@
         </div>
       </div>`;
     document.getElementById('btn-champ-back').addEventListener('click', goToDashboard);
+    document.getElementById('btn-champ-newteam').addEventListener('click', async ()=>{
+      const name = document.getElementById('champ-newteam-name').value.trim();
+      const pin = document.getElementById('champ-newteam-pin').value.trim();
+      const msg = document.getElementById('champ-newteam-msg');
+      if(!name || !pin){ msg.textContent = 'Preencha o nome do time e um PIN.'; return; }
+      msg.textContent = 'Adicionando…';
+      try{
+        const pinHash = await sha256(pin);
+        await sbWrite('teams', { method:'POST', body: JSON.stringify({ championship_id: championship.id, name, pin: pinHash }) }, 'Time adicionado', true);
+        renderChampOverall(championship, true);
+      }catch(e){ msg.textContent = 'Erro ao adicionar — talvez já exista um time com esse nome.'; }
+    });
     document.getElementById('btn-copy-invite').addEventListener('click', ()=>{
       const field = document.getElementById('champ-invite-field');
       field.select();
