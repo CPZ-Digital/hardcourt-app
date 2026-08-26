@@ -519,9 +519,9 @@ footer{
     <small id="team-tag">— sem time selecionado</small>
   </div>
   <nav>
-    <button data-view="setup">Elenco</button>
+    <button data-view="setup" class="active">Elenco</button>
     <button data-view="games">Jogos</button>
-    <button data-view="scorer" class="active">Súmula</button>
+    <button data-view="scorer">Súmula</button>
     <button data-view="rankings">Rankings</button>
     <button id="btn-more-menu">Mais</button>
   </nav>
@@ -540,7 +540,7 @@ footer{
 <main>
 
   <!-- SETUP -->
-  <section class="view" id="view-setup">
+  <section class="view active" id="view-setup">
     <div class="panel">
       <span class="eyebrow">Time</span>
       <h2>Selecionar ou criar time</h2>
@@ -577,7 +577,7 @@ footer{
   </section>
 
   <!-- SCORER -->
-  <section class="view active" id="view-scorer">
+  <section class="view" id="view-scorer">
     <div class="panel">
       <div id="scorer-empty" class="empty">
         <span class="display">Nenhum jogo em andamento</span>
