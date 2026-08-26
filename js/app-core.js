@@ -78,13 +78,6 @@
     if(name==='champ') renderChamp();
   }
 
-  // aba Campeonato só aparece na barra principal se já estiver vinculada a um campeonato (link ou sessão salva neste dispositivo)
-  function hasAnyChampSession(){
-    return Object.keys(localStorage).some(k=>k.startsWith('statix-champ-session-'));
-  }
-  if(champCode() || hasAnyChampSession()){
-    document.getElementById('nav-champ').style.display = '';
-  }
 
   // ---------- TEAM SELECT ----------
   const teamSelect = document.getElementById('team-select');
