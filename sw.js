@@ -1,4 +1,4 @@
-const CACHE = 'statix-v2';
+const CACHE = 'statix-v3';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './js/app-gate.js', './js/app-core.js', './js/app-scorer.js', './js/app-rankings.js', './js/app-athlete.js', './js/app-draw.js', './js/app-championship.js'
@@ -30,6 +30,11 @@ self.addEventListener('fetch', e=>{
     );
     return;
   }
+  // NUNCA interceptar/cachear chamadas pra outra origem (Supabase etc.) — são dados dinâmicos
+  // (campeonatos, estatística, licença...), não arquivo estático. Cachear isso trava o app pra
+  // sempre na primeira resposta que ele viu pra cada URL (foi exatamente o que quebrou o dashboard
+  // "sem campeonato nenhum" depois de criar um — a resposta vazia da primeira visita ficou presa).
+  if(new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
     caches.match(e.request).then(cached=> cached || fetch(e.request).then(res=>{
       const copy = res.clone();
