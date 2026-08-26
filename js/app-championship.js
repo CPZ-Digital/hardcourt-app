@@ -106,7 +106,8 @@
     return `${s.pts||0} pts · ${s.fg2m}/${s.fg2a} 2pt · ${s.fg3m}/${s.fg3a} 3pt · ${s.ftm}/${s.fta} ll · ${s.reb} reb · ${s.ast} ast · ${s.stl} rb · ${s.pf} faltas · ${fmtMinutes(sec)} em quadra`;
   }
 
-  function champCode(){ return new URLSearchParams(location.search).get('c') || ''; }
+  // champCode() já vem definida globalmente por js/app-gate.js (que carrega antes de tudo,
+  // inclusive do app-core.js, que também precisa dela) — não redeclarar aqui.
   function champSessionKey(code){ return `statix-champ-session-${code}`; }
   function loadChampSession(code){ try{ return JSON.parse(localStorage.getItem(champSessionKey(code))||'null'); }catch(e){ return null; } }
   function saveChampSession(code, session){ try{ localStorage.setItem(champSessionKey(code), JSON.stringify(session)); }catch(e){} }

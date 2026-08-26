@@ -6,6 +6,11 @@ const SUPABASE_URL = 'https://rgyjvmpyyyatkaboksww.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJneWp2bXB5eXlhdGthYm9rc3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc2MTUwMjUsImV4cCI6MjEwMzE5MTAyNX0.yOv951mh1LF4_lYW1SOG07Y75bMZJKVWw0qocJQaPQ0';
 const supaAuth = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// definida aqui (carrega antes de tudo) porque app-core.js também precisa dela pra saber se mostra
+// a aba Campeonato — antes vivia só em app-championship.js, que carrega por último e nunca tinha
+// rodado ainda quando app-core.js chamava isso, quebrando a inicialização inteira do app-core.
+function champCode(){ return new URLSearchParams(location.search).get('c') || ''; }
+
 function gateEscape(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 async function gateHasLicense(session){
@@ -83,7 +88,7 @@ function gateWireLogin(){
 
 async function gateRunCheck(){
   // fluxo de convite (?c=CODIGO) é do técnico cadastrando o time dele — nunca passou por login, continua livre
-  if(new URLSearchParams(location.search).get('c')){ gateOpenApp(); return; }
+  if(champCode()){ gateOpenApp(); return; }
 
   const { data:{ session } } = await supaAuth.auth.getSession();
   if(!session){
