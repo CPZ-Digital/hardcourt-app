@@ -193,6 +193,22 @@
       wireDashLogin();
       return;
     }
+    let licensed;
+    try{
+      const rows = await sb(`licenses?email=eq.${encodeURIComponent((session.user.email||'').toLowerCase())}&select=email`, {}, true);
+      licensed = rows && rows.length > 0;
+    }catch(e){
+      el.innerHTML = champErrorHTML('Não deu pra confirmar sua licença. Verifique a internet e volte a essa tela.');
+      return;
+    }
+    if(!licensed){
+      el.innerHTML = dashNoLicenseHTML(session);
+      document.getElementById('btn-dash-logout').addEventListener('click', async ()=>{
+        await supaAuth.auth.signOut();
+        renderDashboard();
+      });
+      return;
+    }
     let mine;
     try{
       mine = await sb(`championships?owner_id=eq.${session.user.id}&select=*&order=created_at.desc`, {}, true);
@@ -277,12 +293,27 @@
     });
   }
 
+  function dashNoLicenseHTML(session){
+    return `
+      <div class="panel">
+        <span class="eyebrow">Organizador</span>
+        <h2>Sem licença ativa</h2>
+        <p style="color:var(--ink-dim);font-size:13px;margin:-6px 0 16px;">A conta <strong style="color:var(--ink);">${escapeHtml(session.user.email)}</strong> logou certinho, mas ainda não tem uma licença liberada pra criar ou gerenciar campeonatos. Peça acesso e a gente libera pra esse e-mail.</p>
+        <div class="row">
+          <a class="btn primary" href="https://cpzdigital.com.br/statix#contato" target="_blank" rel="noopener">Pedir licença →</a>
+          <button class="btn ghost" id="btn-dash-logout">Sair da conta</button>
+        </div>
+      </div>`;
+  }
+
   function dashLoginHTML(){
     return `
       <div class="panel">
         <span class="eyebrow">Organizador</span>
         <h2>Entrar ou criar conta</h2>
-        <p style="color:var(--ink-dim);font-size:13px;margin:-6px 0 16px;">Só o organizador precisa de conta — pra criar campeonatos, gerenciar vários ao mesmo tempo e rodar o scout ao vivo dos confrontos. Técnico convidado não precisa: só usa o link.</p>
+        <p style="color:var(--ink-dim);font-size:13px;margin:-6px 0 16px;">Só o organizador com licença ativa acessa o painel — pra criar campeonatos, gerenciar vários ao mesmo tempo e rodar o scout ao vivo dos confrontos. Técnico convidado não precisa de conta: só usa o link. <a href="https://cpzdigital.com.br/statix#contato" target="_blank" rel="noopener" style="color:var(--accent);">Ainda não tem licença? Peça aqui.</a></p>
+        <button type="button" class="btn" id="btn-dash-google" style="width:100%;margin-bottom:14px;">Entrar com o Google</button>
+        <div style="text-align:center;color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;margin-bottom:14px;">— ou com e-mail e senha —</div>
         <div class="row row-stack">
           <input type="text" id="dash-email" placeholder="E-mail" style="flex:1;min-width:200px;">
           <input type="text" id="dash-pass" placeholder="Senha" style="flex:1;min-width:160px;">
@@ -305,6 +336,10 @@
 
   function wireDashLogin(){
     const msg = document.getElementById('dash-login-msg');
+    document.getElementById('btn-dash-google').addEventListener('click', async ()=>{
+      const { error } = await supaAuth.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: location.href } });
+      if(error) msg.textContent = 'Login com Google ainda não está configurado.';
+    });
     document.getElementById('btn-dash-login').addEventListener('click', async ()=>{
       const email = document.getElementById('dash-email').value.trim();
       const password = document.getElementById('dash-pass').value;
