@@ -452,16 +452,22 @@
       return;
     }
     const rows = champRankingsFromMatches(matches);
-    const backBtn = viewOnly ? `<button class="btn ghost" id="btn-champ-back" style="margin-bottom:16px;">← voltar</button>` : '';
+    const backBtn = `<button class="btn ghost" id="btn-champ-back" style="margin-bottom:16px;">← voltar</button>`;
+    const inviteLink = `${location.origin}${location.pathname}?c=${championship.invite_code}`;
     el.innerHTML = `
       ${backBtn}
       <div class="panel">
         <span class="eyebrow">Organizador</span>
         <h2>${escapeHtml(championship.name)}</h2>
+        <div class="row" style="margin-bottom:14px;">
+          <input type="text" readonly value="${escapeHtml(inviteLink)}" style="flex:1;min-width:180px;font-size:12px;" id="champ-invite-field">
+          <button class="btn" id="btn-copy-invite">Copiar link de convite</button>
+          <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:12px;">código: ${escapeHtml(championship.invite_code)}</span>
+        </div>
         <div class="row">
           <button class="btn primary" id="btn-new-match" ${teams.length<2?'disabled':''}>Novo confronto (scout ao vivo)</button>
         </div>
-        ${teams.length<2 ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Precisa de pelo menos 2 times cadastrados no campeonato.</div>` : ''}
+        ${teams.length<2 ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Precisa de pelo menos 2 times cadastrados no campeonato — mande o link de convite acima pros técnicos.</div>` : ''}
       </div>
       <div class="panel" style="margin-top:16px;">
         <span class="eyebrow">Temporada</span>
@@ -500,7 +506,13 @@
           }).join('') : `<div class="empty">Nenhum confronto criado ainda.</div>`}
         </div>
       </div>`;
-    if(viewOnly) document.getElementById('btn-champ-back').addEventListener('click', goToDashboard);
+    document.getElementById('btn-champ-back').addEventListener('click', goToDashboard);
+    document.getElementById('btn-copy-invite').addEventListener('click', ()=>{
+      const field = document.getElementById('champ-invite-field');
+      field.select();
+      navigator.clipboard?.writeText(field.value).catch(()=>document.execCommand('copy'));
+      showToast('Link copiado', 'success');
+    });
     if(teams.length>=2){
       document.getElementById('btn-new-match').addEventListener('click', ()=> renderMatchSetup(championship, teams));
     }
@@ -680,6 +692,7 @@
     }
 
     el.innerHTML = `
+      <button class="btn ghost" id="btn-public-back" style="margin-bottom:16px;">← sair do placar</button>
       <div class="panel">
         <span class="eyebrow">${match.finished ? 'Confronto encerrado' : '🔴 Ao vivo'} · ${escapeHtml(championship.name)}</span>
         <h2>${escapeHtml(teamA?.name||'?')} ${scoreOf(teamA)} × ${scoreOf(teamB)} ${escapeHtml(teamB?.name||'?')}</h2>
@@ -689,6 +702,12 @@
         ${publicTeamPanel(teamB)}
       </div>`;
 
+    document.getElementById('btn-public-back').addEventListener('click', ()=>{
+      const url = new URL(location.href);
+      url.searchParams.delete('c'); url.searchParams.delete('watch');
+      history.replaceState(null, '', url);
+      switchView('scorer');
+    });
     el.querySelectorAll('.court-chip[data-pid], .public-player-row[data-pid]').forEach(node=>{
       node.addEventListener('click', ()=>{
         const p = playersById[node.dataset.pid];
@@ -757,6 +776,7 @@
     }
 
     el.innerHTML = `
+      <button class="btn ghost" id="btn-live-back" style="margin-bottom:16px;">← voltar (o confronto continua salvo, dá pra retomar depois)</button>
       <div class="panel">
         <span class="eyebrow">Confronto ao vivo</span>
         <h2>${escapeHtml(teamA.name)} ${teamScore(teamA)} × ${teamScore(teamB)} ${escapeHtml(teamB.name)}</h2>
@@ -815,6 +835,7 @@
         renderChampOverall(championship, true);
       }catch(e){}
     });
+    document.getElementById('btn-live-back').addEventListener('click', ()=> renderChampOverall(championship, true));
     document.getElementById('btn-match-court-mode').addEventListener('click', ()=>{
       openMatchCourtMode(championship, teamA, teamB, matchId);
     });
