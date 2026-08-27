@@ -455,7 +455,7 @@
 
   // ranking geral agora vem só dos confrontos que o organizador roda no scout — o técnico convidado não registra jogo
   async function fetchChampMatches(championshipId){
-    return sb(`matches?championship_id=eq.${championshipId}&select=id,finished,played_at,teamA:teams!matches_team_a_id_fkey(name),teamB:teams!matches_team_b_id_fkey(name),match_players(player_id,team_id,starter,players(name,num),teams(name)),match_stats(player_id,pts,reb,ast,fg3m,stl)&order=played_at.desc`);
+    return sb(`matches?championship_id=eq.${championshipId}&select=id,finished,played_at,team_a_id,team_b_id,teamA:teams!matches_team_a_id_fkey(name),teamB:teams!matches_team_b_id_fkey(name),match_players(player_id,team_id,starter,players(name,num),teams(name)),match_stats(player_id,pts,reb,ast,fg3m,stl)&order=played_at.desc`);
   }
 
   function champRankingsFromMatches(matches){
@@ -826,8 +826,9 @@
         </div>`;
     }
 
+    const backLabel = loadChampSession(code) ? '← voltar pro meu time' : '← sair do placar';
     el.innerHTML = `
-      <button class="btn ghost" id="btn-public-back" style="margin-bottom:16px;">← sair do placar</button>
+      <button class="btn ghost" id="btn-public-back" style="margin-bottom:16px;">${backLabel}</button>
       <div class="panel">
         <span class="eyebrow">${match.finished ? 'Confronto encerrado' : '🔴 Ao vivo'} · ${escapeHtml(championship.name)}</span>
         <h2>${escapeHtml(teamA?.name||'?')} ${scoreOf(teamA)} × ${scoreOf(teamB)} ${escapeHtml(teamB?.name||'?')}</h2>
@@ -838,10 +839,17 @@
       </div>`;
 
     document.getElementById('btn-public-back').addEventListener('click', ()=>{
+      const teamSession = loadChampSession(code);
       const url = new URL(location.href);
-      url.searchParams.delete('c'); url.searchParams.delete('watch');
+      url.searchParams.delete('watch');
+      if(!teamSession) url.searchParams.delete('c');
       history.replaceState(null, '', url);
-      switchView('scorer');
+      if(teamSession && teamSession.teamId){
+        champUI.teamId = teamSession.teamId; champUI.pin = teamSession.pin;
+        renderChampTeamPanel();
+      } else {
+        switchView('scorer');
+      }
     });
     el.querySelectorAll('.court-chip[data-pid], .public-player-row[data-pid]').forEach(node=>{
       node.addEventListener('click', ()=>{
@@ -1112,37 +1120,78 @@
 
   // técnico convidado só cadastra o próprio elenco (titulares + reservas) — jogo, estatística, ranking e
   // gráfico ficam exclusivos com o organizador/scout. Nada de "premium" aparece aqui de propósito.
+  // campos do cadastro de jogador no campeonato: reaproveita o mesmo ATTR_FIELDS do modo local
+  // (app-core.js) pra manter os dados consistentes entre os dois modos. Posição/nascimento/altura/peso
+  // são obrigatórios (pedido explícito); envergadura/impulsão/velocidade ficam opcionais.
+  const CHAMP_REQUIRED_ATTRS = ['position','birthdate','height','weight'];
+
+  function champPlayerAttrFieldsHTML(){
+    return ATTR_FIELDS.map(f=>{
+      const req = CHAMP_REQUIRED_ATTRS.includes(f.key);
+      const input = f.type==='select'
+        ? `<select id="champ-attr-${f.key}" style="min-width:150px;"><option value="">${escapeHtml(f.label)}${req?' *':''}</option>${f.options.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select>`
+        : `<input type="${f.type}" id="champ-attr-${f.key}" placeholder="${escapeHtml(f.label)}${req?' *':''}" ${f.step?`step="${f.step}"`:''} style="min-width:150px;">`;
+      return `<div class="field" style="flex:1;margin:0;">${input}</div>`;
+    }).join('');
+  }
+
+  function readChampPlayerAttrs(){
+    const attrs = {};
+    ATTR_FIELDS.forEach(f=>{ const v = document.getElementById(`champ-attr-${f.key}`).value.trim(); if(v) attrs[f.key] = v; });
+    return attrs;
+  }
+
   async function renderChampTeamPanel(){
     const el = document.getElementById('champ-body');
     const championship = champUI.championship;
     el.innerHTML = `<div class="panel"><div class="empty">Carregando seu time…</div></div>`;
-    let teams;
-    try{ teams = await fetchChampTree(championship.id); }
-    catch(e){ el.innerHTML = champErrorHTML('Não deu pra conectar. Verifique a internet e volte a essa tela.'); return; }
+    let teams, matches;
+    try{
+      [teams, matches] = await Promise.all([ fetchChampTree(championship.id), fetchChampMatches(championship.id) ]);
+    }catch(e){ el.innerHTML = champErrorHTML('Não deu pra conectar. Verifique a internet e volte a essa tela.'); return; }
     const myTeam = teams.find(t=>t.id===champUI.teamId);
     if(!myTeam){ el.innerHTML = champErrorHTML('Time não encontrado — o campeonato pode ter sido apagado.'); return; }
+    const myMatches = matches.filter(m=>m.team_a_id===myTeam.id || m.team_b_id===myTeam.id);
 
     el.innerHTML = `
       <div class="panel">
         <span class="eyebrow">Campeonato · ${escapeHtml(championship.name)}</span>
         <h2>${escapeHtml(myTeam.name)}</h2>
-        <div style="color:var(--ink-dim);font-size:12.5px;margin-bottom:12px;">Cadastre aqui o elenco do seu time — titulares e reservas. Jogos e estatísticas ficam com o organizador.</div>
+        <div style="color:var(--ink-dim);font-size:12.5px;margin-bottom:12px;">Cadastre aqui o elenco do seu time. Você acompanha os jogos ao vivo (só visualização) — quem registra o jogo é o organizador.</div>
         <button class="btn ghost" id="btn-champ-leave">Sair deste time neste dispositivo</button>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Jogos</span>
+        <h2>Confrontos do seu time</h2>
+        <div class="roster-list">
+          ${myMatches.length ? myMatches.map(m=>`
+            <div class="roster-row">
+              <span class="name">${escapeHtml(m.teamA.name)} × ${escapeHtml(m.teamB.name)}</span>
+              <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${m.finished?'encerrado':'🔴 ao vivo'}</span>
+              <button type="button" class="btn champ-watch-match" data-mid="${m.id}">Acompanhar</button>
+            </div>`).join('') : `<div class="empty">O organizador ainda não criou nenhum confronto com seu time.</div>`}
+        </div>
       </div>
 
       <div class="panel" style="margin-top:16px;">
         <span class="eyebrow">Elenco</span>
         <h2>Jogadores</h2>
-        <div class="row">
-          <input type="text" id="champ-player-name" placeholder="Nome do jogador" style="flex:2;min-width:160px;">
+        <div class="row" style="margin-bottom:10px;">
+          <input type="text" id="champ-player-name" placeholder="Nome do jogador *" style="flex:2;min-width:160px;">
           <input type="text" id="champ-player-num" placeholder="Nº" style="max-width:80px;">
-          <button class="btn primary" id="champ-add-player">Adicionar</button>
         </div>
+        <div class="row">
+          ${champPlayerAttrFieldsHTML()}
+        </div>
+        <div style="color:var(--ink-dim);font-size:11px;margin:8px 0;">* campos obrigatórios: posição, nascimento, altura, peso. Envergadura, impulsão e velocidade são opcionais.</div>
+        <button class="btn primary" id="champ-add-player">Adicionar jogador</button>
+        <div id="champ-player-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
         <div class="roster-list" id="champ-roster" style="margin-top:12px;">
           ${myTeam.players.length ? myTeam.players.map(p=>`
             <div class="roster-row">
               <span class="jersey">${escapeHtml(p.num||'—')}</span>
-              <span class="name">${escapeHtml(p.name)}</span>
+              <span class="name">${escapeHtml(p.name)}${p.attrs && p.attrs.position ? ` <span style="color:var(--ink-dim);font-size:11px;">${escapeHtml(p.attrs.position)}</span>` : ''}</span>
               <button type="button" class="icon-btn danger champ-remove-player" data-pid="${p.id}" title="Remover jogador">
                 <svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
               </button>
@@ -1156,14 +1205,27 @@
       champUI.teamId = null;
       renderChamp();
     });
+    el.querySelectorAll('.champ-watch-match').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const url = new URL(location.href);
+        url.searchParams.set('watch', btn.dataset.mid);
+        history.replaceState(null, '', url);
+        renderPublicMatch(champCode(), btn.dataset.mid);
+      });
+    });
     document.getElementById('champ-add-player').addEventListener('click', async ()=>{
       const name = document.getElementById('champ-player-name').value.trim();
       const num = document.getElementById('champ-player-num').value.trim();
-      if(!name) return;
+      const msg = document.getElementById('champ-player-msg');
+      const attrs = readChampPlayerAttrs();
+      const missing = CHAMP_REQUIRED_ATTRS.filter(k=>!attrs[k]);
+      if(!name){ msg.textContent = 'Preencha o nome do jogador.'; return; }
+      if(missing.length){ msg.textContent = 'Preencha posição, nascimento, altura e peso — são obrigatórios.'; return; }
+      msg.textContent = '';
       try{
-        await sbWrite('players', { method:'POST', body: JSON.stringify({ team_id: myTeam.id, name, num }) }, 'Jogador adicionado');
+        await sbWrite('players', { method:'POST', body: JSON.stringify({ team_id: myTeam.id, name, num, attrs }) }, 'Jogador adicionado');
         renderChampTeamPanel();
-      }catch(e){}
+      }catch(e){ msg.textContent = 'Erro ao adicionar jogador.'; }
     });
     document.querySelectorAll('.champ-remove-player').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
