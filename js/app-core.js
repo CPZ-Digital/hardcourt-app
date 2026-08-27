@@ -324,7 +324,7 @@
       return `<div class="roster-row">
         <span class="name">vs ${escapeHtml(g.opponent)} <span style="color:var(--ink-dim);">· ${d.toLocaleDateString('pt-BR')}</span></span>
         <span class="num" style="color:var(--ink-dim);font-size:12.5px;">${total} pts ${g.finished?'· encerrado':'· em andamento'}</span>
-        <button data-gid="${g.id}" class="btn-open-game" style="color:var(--accent-ink);">${g.finished?'ver':'continuar'}</button>
+        <button data-gid="${g.id}" class="btn primary btn-open-game">${g.finished?'ver':'continuar'}</button>
       </div>`;
     }).join('');
     list.querySelectorAll('.btn-open-game').forEach(btn=>{

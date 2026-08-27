@@ -415,6 +415,7 @@
           <input type="text" id="champ-team-pin" placeholder="PIN (crie um, 4 dígitos)" style="max-width:200px;" inputmode="numeric" maxlength="8">
           <button class="btn primary" id="btn-join-team">Entrar / criar time</button>
         </div>
+        <div style="margin-top:10px;color:var(--ink-dim);font-size:12px;">⚠️ Anote esse nome de time e PIN — é com eles que você acessa seu time de qualquer aparelho (celular, tablet, computador), sempre por este mesmo link.</div>
         <div id="champ-join-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
       </div>`;
   }
@@ -579,7 +580,7 @@
             return `<div class="roster-row">
               <span class="name">${escapeHtml(m.teamA.name)} ${woLine} ${m.wo_winner_team_id ? '' : escapeHtml(m.teamB.name)}</span>
               <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${d.toLocaleDateString('pt-BR')} ${m.finished?'· encerrado':'· em andamento'}</span>
-              ${!m.finished ? `<button data-mid="${m.id}" class="btn-resume-match" style="color:var(--accent);">continuar</button>
+              ${!m.finished ? `<button data-mid="${m.id}" class="btn btn-resume-match" style="color:var(--accent);">continuar</button>
               <button data-mid="${m.id}" data-team="${m.team_a_id}" class="btn ghost btn-wo-match" title="Dar WO pro ${escapeHtml(m.teamA.name)}" style="font-size:11px;">WO ${escapeHtml(m.teamA.name)}</button>
               <button data-mid="${m.id}" data-team="${m.team_b_id}" class="btn ghost btn-wo-match" title="Dar WO pro ${escapeHtml(m.teamB.name)}" style="font-size:11px;">WO ${escapeHtml(m.teamB.name)}</button>` : ''}
             </div>`;
