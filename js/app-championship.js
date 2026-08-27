@@ -1014,22 +1014,20 @@
   // Modo Quadra também pro confronto do organizador (dois times reais) — reaproveita o mesmo overlay
   // usado na súmula individual, com uma aba pra trocar de time em quadra.
   let matchCourtCtx = null;
+  // quadra cheia: time A sempre na metade esquerda, time B na direita — nada de aba pra trocar,
+  // os dois times ficam visíveis ao mesmo tempo, cada um com seu banco separado.
+  const COURT_LEFT_SLOTS = [[9,50],[20,22],[28,78],[37,22],[45,50]];
+  const COURT_RIGHT_SLOTS = COURT_LEFT_SLOTS.map(([x,y])=>[100-x,y]);
 
   function openMatchCourtMode(championship, teamA, teamB, matchId){
-    matchCourtCtx = { championship, teamA, teamB, matchId, activeTeamId: teamA.id };
+    matchCourtCtx = { championship, teamA, teamB, matchId };
     document.getElementById('court-overlay').classList.add('open');
-    const switchBar = document.getElementById('court-team-switch');
-    switchBar.style.display = 'flex';
-    switchBar.innerHTML = `
-      <button type="button" class="filter-chip active" data-team="${teamA.id}">${escapeHtml(teamA.name)}</button>
-      <button type="button" class="filter-chip" data-team="${teamB.id}">${escapeHtml(teamB.name)}</button>`;
-    switchBar.querySelectorAll('button').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        matchCourtCtx.activeTeamId = btn.dataset.team;
-        switchBar.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b===btn));
-        renderMatchCourtMode();
-      });
-    });
+    document.querySelector('.court-bench').style.display = 'none';
+    document.getElementById('court-bench-dual').classList.add('open');
+    document.getElementById('court-label-left').textContent = teamA.name;
+    document.getElementById('court-label-right').textContent = teamB.name;
+    document.getElementById('court-bench-label-left').textContent = `Banco — ${teamA.name}`;
+    document.getElementById('court-bench-label-right').textContent = `Banco — ${teamB.name}`;
     renderMatchCourtMode();
   }
 
@@ -1040,13 +1038,7 @@
     try{ match = await fetchMatch(ctx.matchId); }
     catch(e){ showToast('Falha ao carregar o confronto.', 'error'); return; }
 
-    const teamPlayers = (ctx.activeTeamId===ctx.teamA.id ? ctx.teamA : ctx.teamB).players;
-    const playersById = Object.fromEntries(teamPlayers.map(p=>[p.id,p]));
-    const roster = match.match_players.filter(mp=>mp.team_id===ctx.activeTeamId);
-    const onCourtIds = roster.filter(mp=>mp.on_court).map(mp=>mp.player_id);
-    const benchIds = roster.filter(mp=>!mp.on_court).map(mp=>mp.player_id);
     const statOf = pid => match.match_stats.find(s=>s.player_id===pid) || EMPTY_STAT;
-
     const scoreOf = teamId => match.match_stats.reduce((s,x)=>{
       const mp = match.match_players.find(p=>p.player_id===x.player_id);
       return mp && mp.team_id===teamId ? s + (x.pts||0) : s;
@@ -1054,24 +1046,38 @@
     document.getElementById('court-score').textContent = `${ctx.teamA.name} ${scoreOf(ctx.teamA.id)} × ${scoreOf(ctx.teamB.id)} ${ctx.teamB.name}`;
 
     const wrap = document.getElementById('court-players');
-    wrap.innerHTML = onCourtIds.map((pid,i)=>{
-      const p = playersById[pid]; if(!p) return '';
-      const pos = COURT_SLOTS[i % COURT_SLOTS.length];
-      const s = statOf(pid);
-      return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${pid}">
-        <span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small>
-      </div>`;
-    }).join('');
-    wrap.querySelectorAll('.court-chip').forEach(chip=>{
-      const mp = roster.find(m=>m.player_id===chip.dataset.pid);
-      chip.addEventListener('click', ()=> openMatchStatModal(chip.dataset.pid, playersById[chip.dataset.pid], statOf(chip.dataset.pid), mp));
-    });
+    wrap.innerHTML = '';
+    [ [ctx.teamA, COURT_LEFT_SLOTS, 'court-bench-left'], [ctx.teamB, COURT_RIGHT_SLOTS, 'court-bench-right'] ].forEach(([team, slots, benchElId])=>{
+      const playersById = Object.fromEntries(team.players.map(p=>[p.id,p]));
+      const roster = match.match_players.filter(mp=>mp.team_id===team.id);
+      const onCourtIds = roster.filter(mp=>mp.on_court).map(mp=>mp.player_id);
+      const benchIds = roster.filter(mp=>!mp.on_court).map(mp=>mp.player_id);
 
-    const benchList = document.getElementById('court-bench-list');
-    benchList.innerHTML = benchIds.length
-      ? benchIds.map(pid=>{ const p = playersById[pid]; return p ? `<div class="court-bench-chip" data-pid="${pid}">${escapeHtml(p.num||'—')}</div>` : ''; }).join('')
-      : `<div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">sem reservas</div>`;
-    benchList.querySelectorAll('.court-bench-chip').forEach(chip=> enableMatchBenchDrag(chip));
+      wrap.insertAdjacentHTML('beforeend', onCourtIds.map((pid,i)=>{
+        const p = playersById[pid]; if(!p) return '';
+        const pos = slots[i % slots.length];
+        const s = statOf(pid);
+        return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${pid}">
+          <span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small>
+        </div>`;
+      }).join(''));
+
+      const benchList = document.getElementById(benchElId);
+      benchList.innerHTML = benchIds.length
+        ? benchIds.map(pid=>{ const p = playersById[pid]; return p ? `<div class="court-bench-chip" data-pid="${pid}">${escapeHtml(p.num||'—')}</div>` : ''; }).join('')
+        : `<div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">sem reservas</div>`;
+      benchList.querySelectorAll('.court-bench-chip').forEach(chip=> enableMatchBenchDrag(chip));
+
+      wrap.querySelectorAll('.court-chip').forEach(chip=>{
+        if(chip.dataset.wired) return;
+        chip.dataset.wired = '1';
+        chip.addEventListener('click', ()=>{
+          const allPlayersById = { ...Object.fromEntries(ctx.teamA.players.map(p=>[p.id,p])), ...Object.fromEntries(ctx.teamB.players.map(p=>[p.id,p])) };
+          const mp = match.match_players.find(m=>m.player_id===chip.dataset.pid);
+          openMatchStatModal(chip.dataset.pid, allPlayersById[chip.dataset.pid], statOf(chip.dataset.pid), mp);
+        });
+      });
+    });
   }
 
   function enableMatchBenchDrag(chipEl){

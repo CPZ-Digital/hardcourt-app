@@ -170,7 +170,19 @@ nav button.active{
   border:1px solid var(--line); background:color-mix(in srgb, var(--court) 6%, var(--surface));
 }
 .court-svg{ position:absolute; inset:0; width:100%; height:100%; color:var(--line-bright); }
+.court-svg .accent-line{ stroke:var(--accent); filter:drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 70%, transparent)); }
 #court-players{ position:absolute; inset:0; }
+.court-team-label{
+  position:absolute; top:8px; font-family:'Rajdhani'; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.04em; font-size:15px; color:var(--accent); text-shadow:0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+  pointer-events:none; max-width:44%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.court-team-label.left{ left:10px; text-align:left; }
+.court-team-label.right{ right:10px; text-align:right; }
+.court-bench-dual{ display:none; flex:none; margin-top:10px; gap:14px; }
+.court-bench-dual.open{ display:grid; grid-template-columns:1fr 1fr; }
+.court-bench-side .eyebrow{ margin:0 0 6px; font-size:10px; }
+.court-bench-side .court-bench-list{ max-height:80px; overflow-y:auto; }
 .court-chip{
   position:absolute; transform:translate(-50%,-50%);
   width:52px; height:52px; border-radius:50%;
@@ -612,24 +624,38 @@ footer{
       <div class="court-stage">
         <div class="court-topbar">
           <div id="court-score" class="num">vs —</div>
-          <div id="court-team-switch" class="row" style="display:none;gap:6px;"></div>
           <button class="btn ghost" id="btn-close-court">✕ sair do modo quadra</button>
         </div>
         <div class="court-diagram" id="court-diagram">
           <svg class="court-svg" viewBox="0 0 300 190" preserveAspectRatio="none">
             <rect x="2" y="2" width="296" height="186" fill="none" stroke="currentColor" stroke-width="1.2"/>
-            <circle cx="150" cy="95" r="24" fill="none" stroke="currentColor" stroke-width="1"/>
             <line x1="150" y1="2" x2="150" y2="188" stroke="currentColor" stroke-width="1"/>
-            <rect x="2" y="65" width="55" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
-            <rect x="243" y="65" width="55" height="60" fill="none" stroke="currentColor" stroke-width="1"/>
-            <path d="M 2 30 A 120 120 0 0 1 2 160" fill="none" stroke="currentColor" stroke-width="1"/>
-            <path d="M 298 30 A 120 120 0 0 0 298 160" fill="none" stroke="currentColor" stroke-width="1"/>
+            <circle class="accent-line" cx="150" cy="95" r="22" fill="none" stroke-width="1.4"/>
+            <circle cx="150" cy="95" r="2" fill="currentColor"/>
+            <rect class="accent-line" x="2" y="60" width="50" height="70" fill="none" stroke-width="1.4"/>
+            <circle cx="52" cy="95" r="18" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/>
+            <path d="M 2 20 A 130 130 0 0 1 2 170" fill="none" stroke="currentColor" stroke-width="1"/>
+            <rect class="accent-line" x="248" y="60" width="50" height="70" fill="none" stroke-width="1.4"/>
+            <circle cx="248" cy="95" r="18" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/>
+            <path d="M 298 20 A 130 130 0 0 0 298 170" fill="none" stroke="currentColor" stroke-width="1"/>
           </svg>
+          <div id="court-label-left" class="court-team-label left"></div>
+          <div id="court-label-right" class="court-team-label right"></div>
           <div id="court-players"></div>
         </div>
         <div class="court-bench">
           <div class="eyebrow" style="margin:0 0 8px;">Banco — arraste sobre um jogador em quadra pra substituir</div>
           <div id="court-bench-list" class="court-bench-list"></div>
+        </div>
+        <div class="court-bench-dual" id="court-bench-dual">
+          <div class="court-bench-side">
+            <div class="eyebrow" id="court-bench-label-left">Banco</div>
+            <div id="court-bench-left" class="court-bench-list"></div>
+          </div>
+          <div class="court-bench-side">
+            <div class="eyebrow" id="court-bench-label-right">Banco</div>
+            <div id="court-bench-right" class="court-bench-list"></div>
+          </div>
         </div>
       </div>
     </div>

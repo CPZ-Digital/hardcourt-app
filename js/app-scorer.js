@@ -79,7 +79,10 @@
   document.getElementById('btn-court-mode').addEventListener('click', ()=>{
     if(!currentGame()){ alert('Inicie um jogo primeiro.'); return; }
     matchCourtCtx = null;
-    document.getElementById('court-team-switch').style.display = 'none';
+    document.querySelector('.court-bench').style.display = '';
+    document.getElementById('court-bench-dual').classList.remove('open');
+    document.getElementById('court-label-left').textContent = '';
+    document.getElementById('court-label-right').textContent = '';
     document.getElementById('court-overlay').classList.add('open');
     renderCourtMode();
   });
