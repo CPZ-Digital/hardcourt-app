@@ -1127,6 +1127,8 @@
       return mp && mp.team_id===teamId ? s + (x.pts||0) : s;
     },0);
     document.getElementById('court-score').textContent = `${ctx.teamA.name} ${scoreOf(ctx.teamA.id)} × ${scoreOf(ctx.teamB.id)} ${ctx.teamB.name}`;
+    document.getElementById('court-score-left').textContent = scoreOf(ctx.teamA.id);
+    document.getElementById('court-score-right').textContent = scoreOf(ctx.teamB.id);
 
     const wrap = document.getElementById('court-players');
     wrap.innerHTML = '';

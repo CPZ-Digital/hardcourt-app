@@ -172,6 +172,11 @@ nav button.active{
 }
 .court-team-label.left{ left:10px; text-align:left; }
 .court-team-label.right{ right:10px; text-align:right; }
+.court-score-box{
+  margin-top:4px; font-family:'JetBrains Mono'; font-weight:700; font-size:28px;
+  line-height:1; color:var(--ink); background:color-mix(in srgb, var(--miss) 18%, var(--surface));
+  border:1px solid var(--miss); padding:4px 12px; display:inline-block; min-width:44px;
+}
 .court-bench-dual{ display:none; flex:none; margin-top:10px; gap:14px; }
 .court-bench-dual.open{ display:grid; grid-template-columns:1fr 1fr; }
 .court-bench-side .eyebrow{ margin:0 0 6px; font-size:10px; }
@@ -621,8 +626,8 @@ footer{
           <button class="btn ghost" id="btn-close-court">✕ sair do modo quadra</button>
         </div>
         <div class="court-diagram" id="court-diagram">
-          <div id="court-label-left" class="court-team-label left"></div>
-          <div id="court-label-right" class="court-team-label right"></div>
+          <div class="court-team-label left"><div id="court-label-left"></div><div id="court-score-left" class="court-score-box"></div></div>
+          <div class="court-team-label right"><div id="court-label-right"></div><div id="court-score-right" class="court-score-box"></div></div>
           <div id="court-players"></div>
         </div>
         <div class="court-bench">
