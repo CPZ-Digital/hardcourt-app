@@ -1077,8 +1077,30 @@
   let matchCourtCtx = null;
   // quadra cheia: time A sempre na metade esquerda, time B na direita — nada de aba pra trocar,
   // os dois times ficam visíveis ao mesmo tempo, cada um com seu banco separado.
-  const COURT_LEFT_SLOTS = [[9,50],[20,22],[28,78],[37,22],[45,50]];
-  const COURT_RIGHT_SLOTS = COURT_LEFT_SLOTS.map(([x,y])=>[100-x,y]);
+  // posição em quadra é pela FUNÇÃO do jogador (mesma formação do diagrama de referência), não
+  // ordem aleatória: pivô sob a cesta, ala-pivô no garrafão, alas nas pontas, armador no topo do garrafão.
+  const POSITION_SLOTS_LEFT = {
+    'Pivô': [9,50],
+    'Ala-pivô': [20,68],
+    'Ala-armador': [34,20],
+    'Ala': [34,80],
+    'Armador': [46,50],
+  };
+  const POSITION_SLOTS_RIGHT = Object.fromEntries(Object.entries(POSITION_SLOTS_LEFT).map(([pos,[x,y]])=>[pos,[100-x,y]]));
+
+  // quem tem posição cadastrada e vaga livre pega o lugar certo; o resto (sem posição, ou repetida)
+  // preenche as vagas que sobrarem, pra nunca travar o desenho da quadra.
+  function assignCourtSlots(onCourtIds, playersById, posSlots){
+    const used = new Set();
+    const result = {};
+    onCourtIds.forEach(pid=>{
+      const pos = playersById[pid]?.attrs?.position;
+      if(pos && posSlots[pos] && !used.has(pos)){ result[pid] = posSlots[pos]; used.add(pos); }
+    });
+    const leftovers = Object.entries(posSlots).filter(([k])=>!used.has(k)).map(([,v])=>v);
+    onCourtIds.forEach(pid=>{ if(!result[pid]) result[pid] = leftovers.shift() || [50,50]; });
+    return result;
+  }
 
   function openMatchCourtMode(championship, teamA, teamB, matchId){
     matchCourtCtx = { championship, teamA, teamB, matchId };
@@ -1108,17 +1130,18 @@
 
     const wrap = document.getElementById('court-players');
     wrap.innerHTML = '';
-    [ [ctx.teamA, COURT_LEFT_SLOTS, 'court-bench-left'], [ctx.teamB, COURT_RIGHT_SLOTS, 'court-bench-right'] ].forEach(([team, slots, benchElId])=>{
+    [ [ctx.teamA, POSITION_SLOTS_LEFT, 'court-bench-left'], [ctx.teamB, POSITION_SLOTS_RIGHT, 'court-bench-right'] ].forEach(([team, posSlots, benchElId])=>{
       const playersById = Object.fromEntries(team.players.map(p=>[p.id,p]));
       const roster = match.match_players.filter(mp=>mp.team_id===team.id);
       const onCourtIds = roster.filter(mp=>mp.on_court).map(mp=>mp.player_id);
       const benchIds = roster.filter(mp=>!mp.on_court).map(mp=>mp.player_id);
+      const slotByPid = assignCourtSlots(onCourtIds, playersById, posSlots);
 
-      wrap.insertAdjacentHTML('beforeend', onCourtIds.map((pid,i)=>{
+      wrap.insertAdjacentHTML('beforeend', onCourtIds.map(pid=>{
         const p = playersById[pid]; if(!p) return '';
-        const pos = slots[i % slots.length];
+        const pos = slotByPid[pid];
         const s = statOf(pid);
-        return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${pid}">
+        return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${pid}" title="${escapeHtml(p.attrs?.position||'')}">
           <span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small>
         </div>`;
       }).join(''));
