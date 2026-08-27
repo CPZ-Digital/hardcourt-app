@@ -534,7 +534,7 @@
         <span class="eyebrow">Times</span>
         <h2>Times do campeonato</h2>
         <div class="roster-list" style="margin-bottom:16px;">
-          ${teams.length ? teams.map(t=>`<div class="roster-row"><span class="name">${escapeHtml(t.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${t.players.length} jogador(es)</span><button type="button" class="icon-btn danger btn-remove-team" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="Excluir time"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button></div>`).join('') : `<div class="empty">Nenhum time cadastrado ainda.</div>`}
+          ${teams.length ? teams.map(t=>`<div class="roster-row"><button type="button" class="name btn-open-team-roster" data-id="${t.id}" style="background:none;border:none;padding:0;text-align:left;cursor:pointer;color:var(--accent);text-decoration:underline;">${escapeHtml(t.name)}</button><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${t.players.length} jogador(es)</span><button type="button" class="icon-btn danger btn-remove-team" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="Excluir time"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button></div>`).join('') : `<div class="empty">Nenhum time cadastrado ainda.</div>`}
         </div>
         <div style="color:var(--ink-dim);font-size:11px;margin-bottom:14px;">Excluir um time também apaga os confrontos dele — se ele já tiver jogo marcado, prefira dar WO no histórico abaixo antes de excluir.</div>
         <div class="eyebrow">Cadastrar time sem link de convite</div>
@@ -673,6 +673,71 @@
         try{
           await sbWrite(`teams?id=eq.${btn.dataset.id}`, { method:'DELETE' }, 'Time excluído', true);
           renderChampOverall(championship, true, isOwner);
+        }catch(e){}
+      });
+    });
+    el.querySelectorAll('.btn-open-team-roster').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const team = teams.find(t=>t.id===btn.dataset.id);
+        if(team) renderChampTeamRosterAsOrganizer(championship, team, isOwner);
+      });
+    });
+  }
+
+  // organizador gerencia o elenco de qualquer time do campeonato direto — necessário pros times que
+  // ele mesmo cadastrou sem link de convite, que senão nunca teriam como adicionar jogador.
+  async function renderChampTeamRosterAsOrganizer(championship, team, isOwner){
+    const el = document.getElementById('champ-body');
+    el.innerHTML = `
+      <button class="btn ghost" id="btn-roster-org-back" style="margin-bottom:16px;">← voltar</button>
+      <div class="panel">
+        <span class="eyebrow">Campeonato · ${escapeHtml(championship.name)}</span>
+        <h2>${escapeHtml(team.name)}</h2>
+        <div class="row" style="margin-bottom:10px;">
+          <input type="text" id="champ-player-name" placeholder="Nome do jogador *" style="flex:2;min-width:160px;">
+          <input type="text" id="champ-player-num" placeholder="Nº" style="max-width:80px;">
+        </div>
+        <div class="row">
+          ${champPlayerAttrFieldsHTML()}
+        </div>
+        <div style="color:var(--ink-dim);font-size:11px;margin:8px 0;">* campos obrigatórios: posição, nascimento, altura, peso. Envergadura, impulsão e velocidade são opcionais.</div>
+        <button class="btn primary" id="champ-add-player">Adicionar jogador</button>
+        <div id="champ-player-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
+        <div class="roster-list" id="champ-roster" style="margin-top:12px;">
+          ${team.players.length ? team.players.map(p=>`
+            <div class="roster-row">
+              <span class="jersey">${escapeHtml(p.num||'—')}</span>
+              <span class="name">${escapeHtml(p.name)}${p.attrs && p.attrs.position ? ` <span style="color:var(--ink-dim);font-size:11px;">${escapeHtml(p.attrs.position)}</span>` : ''}</span>
+              <button type="button" class="icon-btn danger champ-remove-player" data-pid="${p.id}" title="Remover jogador">
+                <svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+              </button>
+            </div>
+          `).join('') : `<div class="empty">Nenhum jogador ainda.</div>`}
+        </div>
+      </div>`;
+
+    document.getElementById('btn-roster-org-back').addEventListener('click', ()=> renderChampOverall(championship, true, isOwner));
+    document.getElementById('champ-add-player').addEventListener('click', async ()=>{
+      const name = document.getElementById('champ-player-name').value.trim();
+      const num = document.getElementById('champ-player-num').value.trim();
+      const msg = document.getElementById('champ-player-msg');
+      const attrs = readChampPlayerAttrs();
+      const missing = CHAMP_REQUIRED_ATTRS.filter(k=>!attrs[k]);
+      if(!name){ msg.textContent = 'Preencha o nome do jogador.'; return; }
+      if(missing.length){ msg.textContent = 'Preencha posição, nascimento, altura e peso — são obrigatórios.'; return; }
+      msg.textContent = '';
+      try{
+        await sbWrite('players', { method:'POST', body: JSON.stringify({ team_id: team.id, name, num, attrs }) }, 'Jogador adicionado', true);
+        const fresh = await fetchChampTree(championship.id);
+        renderChampTeamRosterAsOrganizer(championship, fresh.find(t=>t.id===team.id), isOwner);
+      }catch(e){ msg.textContent = 'Erro ao adicionar jogador.'; }
+    });
+    document.querySelectorAll('.champ-remove-player').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        try{
+          await sbWrite(`players?id=eq.${btn.dataset.pid}`, { method:'DELETE' }, 'Jogador removido', true);
+          const fresh = await fetchChampTree(championship.id);
+          renderChampTeamRosterAsOrganizer(championship, fresh.find(t=>t.id===team.id), isOwner);
         }catch(e){}
       });
     });
