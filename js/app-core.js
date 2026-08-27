@@ -23,14 +23,16 @@
   const STAT_NAMES = { pts:'pontos', fg3:'cesta de 3', reb:'rebote', ast:'assistência', stl:'roubo de bola', pf:'falta' };
 
   // ponytail: lista única controla o formulário de ficha física e a exibição — trocar de esporte é só editar isto
+  // min/max são limites físicos generosos, só pra barrar valor sem sentido (negativo, zero,
+  // 999999cm) — não validação esportiva rigorosa. birthdate ganha max=hoje calculado na hora do uso.
   const ATTR_FIELDS = [
     { key:'position', label:'Posição', type:'select', options:['Armador','Ala-armador','Ala','Ala-pivô','Pivô'] },
     { key:'birthdate', label:'Nascimento', type:'date' },
-    { key:'height', label:'Altura (cm)', type:'number' },
-    { key:'weight', label:'Peso (kg)', type:'number' },
-    { key:'wingspan', label:'Envergadura (cm)', type:'number' },
-    { key:'vertical', label:'Impulsão vertical (cm)', type:'number' },
-    { key:'sprint', label:'Velocidade 20m (s)', type:'number', step:'0.01' },
+    { key:'height', label:'Altura (cm)', type:'number', min:100, max:260 },
+    { key:'weight', label:'Peso (kg)', type:'number', min:20, max:250 },
+    { key:'wingspan', label:'Envergadura (cm)', type:'number', min:100, max:280 },
+    { key:'vertical', label:'Impulsão (cm)', type:'number', min:0, max:150 },
+    { key:'sprint', label:'Velocidade 20m (s)', type:'number', step:'0.01', min:0, max:10 },
   ];
   function attrAge(birthdate){
     if(!birthdate) return null;
