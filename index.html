@@ -157,14 +157,13 @@ nav button.active{
 .court-topbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex:none; }
 .court-topbar .num{ font-size:20px; color:var(--accent); }
 .court-diagram{
-  position:relative; flex:none; width:100%; aspect-ratio:300/190;
-  border:1px solid var(--line); background:color-mix(in srgb, var(--court) 6%, var(--surface));
+  position:relative; flex:none; width:100%; aspect-ratio:900/502;
+  border:1px solid var(--line);
+  background-image:url('icons/court-bg.jpg'); background-size:100% 100%; background-repeat:no-repeat;
 }
 @media (min-width:900px){
   .court-diagram{ flex:1; min-height:0; aspect-ratio:auto; }
 }
-.court-svg{ position:absolute; inset:0; width:100%; height:100%; color:var(--line-bright); }
-.court-svg .accent-line{ stroke:var(--accent); filter:drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 70%, transparent)); }
 #court-players{ position:absolute; inset:0; }
 .court-team-label{
   position:absolute; top:8px; font-family:'Rajdhani'; font-weight:700; text-transform:uppercase;
@@ -621,18 +620,6 @@ footer{
           <button class="btn ghost" id="btn-close-court">✕ sair do modo quadra</button>
         </div>
         <div class="court-diagram" id="court-diagram">
-          <svg class="court-svg" viewBox="0 0 300 190" preserveAspectRatio="none">
-            <rect x="2" y="2" width="296" height="186" fill="none" stroke="currentColor" stroke-width="1.2"/>
-            <line x1="150" y1="2" x2="150" y2="188" stroke="currentColor" stroke-width="1"/>
-            <circle class="accent-line" cx="150" cy="95" r="22" fill="none" stroke-width="1.4"/>
-            <circle cx="150" cy="95" r="2" fill="currentColor"/>
-            <rect class="accent-line" x="2" y="60" width="50" height="70" fill="none" stroke-width="1.4"/>
-            <circle cx="52" cy="95" r="18" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/>
-            <path d="M 2 20 A 130 130 0 0 1 2 170" fill="none" stroke="currentColor" stroke-width="1"/>
-            <rect class="accent-line" x="248" y="60" width="50" height="70" fill="none" stroke-width="1.4"/>
-            <circle cx="248" cy="95" r="18" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/>
-            <path d="M 298 20 A 130 130 0 0 0 298 170" fill="none" stroke="currentColor" stroke-width="1"/>
-          </svg>
           <div id="court-label-left" class="court-team-label left"></div>
           <div id="court-label-right" class="court-team-label right"></div>
           <div id="court-players"></div>

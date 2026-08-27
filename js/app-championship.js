@@ -862,12 +862,7 @@
       return `<div class="court-chip" style="left:${pos[0]}%;top:${pos[1]}%;" data-pid="${p.id}"><span>${escapeHtml(p.num||'—')}</span><small>${s.pts||0}p</small></div>`;
     }).join('');
     return `
-      <div class="court-diagram" style="height:180px;margin-bottom:10px;">
-        <svg class="court-svg" viewBox="0 0 300 190" preserveAspectRatio="none">
-          <rect x="2" y="2" width="296" height="186" fill="none" stroke="currentColor" stroke-width="1.2"/>
-          <circle cx="150" cy="95" r="24" fill="none" stroke="currentColor" stroke-width="1"/>
-          <line x1="150" y1="2" x2="150" y2="188" stroke="currentColor" stroke-width="1"/>
-        </svg>
+      <div class="court-diagram" style="height:180px;margin-bottom:10px;aspect-ratio:auto;">
         <div>${chips}</div>
       </div>`;
   }
