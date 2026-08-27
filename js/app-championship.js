@@ -158,11 +158,20 @@
     }
     champUI.championship = championship;
 
-    // se quem abriu o link é o organizador logado dono deste campeonato, pula o cadastro de técnico
-    // e vai direto pro painel de scout — dono é validado no banco (owner_id), não no front.
+    // se quem abriu o link é o dono OU um co-organizador convidado deste campeonato, pula o
+    // cadastro de técnico e vai direto pro painel de scout — validado no banco, não no front.
     const session = await currentSession();
-    if(session && championship.owner_id === session.user.id){
-      await renderChampOverall(championship, true);
+    const isOwner = !!(session && championship.owner_id === session.user.id);
+    let isCoOrganizer = false;
+    if(session && !isOwner){
+      try{
+        const rows = await sb(`championship_organizers?championship_id=eq.${championship.id}&email=eq.${encodeURIComponent((session.user.email||'').toLowerCase())}&select=email`, {}, true);
+        isCoOrganizer = rows && rows.length > 0;
+      }catch(e){}
+    }
+    if(isOwner || isCoOrganizer){
+      champUI.isOwner = isOwner;
+      await renderChampOverall(championship, true, isOwner);
       return;
     }
 
@@ -208,7 +217,13 @@
     }
     let mine;
     try{
-      mine = await sb(`championships?owner_id=eq.${session.user.id}&select=*&order=created_at.desc`, {}, true);
+      const email = (session.user.email||'').toLowerCase();
+      const [owned, coOrgRows] = await Promise.all([
+        sb(`championships?owner_id=eq.${session.user.id}&select=*&order=created_at.desc`, {}, true),
+        sb(`championship_organizers?email=eq.${encodeURIComponent(email)}&select=championships(*)`, {}, true)
+      ]);
+      const coOrganized = (coOrgRows||[]).map(r=>({ ...r.championships, _coOrg:true })).filter(c=>c && c.id);
+      mine = [...owned.map(c=>({...c, _coOrg:false})), ...coOrganized];
     }catch(e){
       el.innerHTML = champErrorHTML('Não deu pra carregar seus campeonatos. Verifique a internet e volte a essa tela.');
       return;
@@ -222,9 +237,11 @@
         <div class="roster-list" style="margin-top:16px;">
           ${mine.length ? mine.map(c=>`
             <div class="roster-row">
-              <span class="name">${escapeHtml(c.name)}</span>
+              <span class="name">${escapeHtml(c.name)}${c.archived ? ' <span style="color:var(--miss);font-size:11px;">(encerrado)</span>' : ''}${c._coOrg ? ' <span style="color:var(--ink-dim);font-size:11px;">(co-organizador)</span>' : ''}</span>
               <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${escapeHtml(c.invite_code)}</span>
+              ${!c._coOrg ? `<button type="button" class="btn dash-share-champ" data-id="${c.id}" data-code="${escapeHtml(c.invite_code)}" title="Chamar co-organizador">Compartilhar</button>` : ''}
               <button type="button" class="btn dash-open-champ" data-code="${escapeHtml(c.invite_code)}">Abrir</button>
+              ${!c._coOrg ? `<button type="button" class="icon-btn danger dash-delete-champ" data-id="${c.id}" data-name="${escapeHtml(c.name)}" title="Excluir"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button>` : ''}
             </div>`).join('') : `<div class="empty">Nenhum campeonato criado ainda.</div>`}
         </div>
       </div>
@@ -256,6 +273,24 @@
         url.searchParams.set('c', btn.dataset.code);
         history.replaceState(null, '', url);
         renderChamp();
+      });
+    });
+    el.querySelectorAll('.dash-share-champ').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const email = prompt('E-mail de quem já tem licença Statix, pra virar co-organizador desse campeonato:');
+        if(!email) return;
+        try{
+          await sbWrite('championship_organizers', { method:'POST', body: JSON.stringify({ championship_id: btn.dataset.id, email: email.trim().toLowerCase() }) }, 'Co-organizador adicionado', true);
+        }catch(e){ alert('Erro — confirme que esse e-mail já tem licença Statix.'); }
+      });
+    });
+    el.querySelectorAll('.dash-delete-champ').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm(`Excluir "${btn.dataset.name}" de vez? Times, jogadores e confrontos somem junto — não dá pra desfazer.`)) return;
+        try{
+          await sbWrite(`championships?id=eq.${btn.dataset.id}`, { method:'DELETE' }, 'Campeonato excluído', true);
+          renderDashboard();
+        }catch(e){}
       });
     });
     document.getElementById('btn-create-champ').addEventListener('click', async ()=>{
@@ -441,12 +476,13 @@
     }).sort((a,b)=>b.ppg-a.ppg);
   }
 
-  async function renderChampOverall(championship, viewOnly){
+  async function renderChampOverall(championship, viewOnly, isOwner = champUI.isOwner){
     const el = document.getElementById('champ-body');
     el.innerHTML = `<div class="panel"><div class="empty">Carregando…</div></div>`;
-    let teams, matches;
+    let teams, matches, organizers = [];
     try{
       [teams, matches] = await Promise.all([ fetchChampTree(championship.id), fetchChampMatches(championship.id) ]);
+      if(isOwner) organizers = await sb(`championship_organizers?championship_id=eq.${championship.id}&select=email`, {}, true);
     }catch(e){
       el.innerHTML = champErrorHTML('Não deu pra carregar os dados do campeonato. Verifique a internet e volte a essa tela.');
       return;
@@ -457,7 +493,7 @@
     el.innerHTML = `
       ${backBtn}
       <div class="panel">
-        <span class="eyebrow">Organizador</span>
+        <span class="eyebrow">Organizador${championship.archived ? ' · encerrado' : ''}</span>
         <h2>${escapeHtml(championship.name)}</h2>
         <div class="row" style="margin-bottom:14px;">
           <input type="text" readonly value="${escapeHtml(inviteLink)}" style="flex:1;min-width:180px;font-size:12px;" id="champ-invite-field">
@@ -465,10 +501,35 @@
           <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:12px;">código: ${escapeHtml(championship.invite_code)}</span>
         </div>
         <div class="row">
-          <button class="btn primary" id="btn-new-match" ${teams.length<2?'disabled':''}>Novo confronto (scout ao vivo)</button>
+          <button class="btn primary" id="btn-new-match" ${teams.length<2 || championship.archived ?'disabled':''}>Novo confronto (scout ao vivo)</button>
+          <button class="btn" id="btn-draw-bracket" ${teams.length<2 || championship.archived ?'disabled':''}>🎲 Sortear chave (1ª rodada)</button>
         </div>
         ${teams.length<2 ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Precisa de pelo menos 2 times cadastrados no campeonato — mande o link de convite acima pros técnicos, ou cadastre um time você mesmo abaixo.</div>` : ''}
+        ${championship.archived ? `<div style="margin-top:8px;color:var(--miss);font-size:12px;">Campeonato encerrado — só leitura, não dá mais pra criar confronto novo.</div>` : ''}
       </div>
+      ${isOwner ? `
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Colaboração</span>
+        <h2>Co-organizadores</h2>
+        <p style="color:var(--ink-dim);font-size:12.5px;margin:-4px 0 12px;">Outra pessoa com licença pode controlar o scout ao vivo desse campeonato junto com você — tipo dois árbitros na mesma súmula, cada um no seu dispositivo.</p>
+        <div class="roster-list" style="margin-bottom:14px;">
+          ${organizers.length ? organizers.map(o=>`<div class="roster-row"><span class="name">${escapeHtml(o.email)}</span><button type="button" class="icon-btn danger btn-remove-organizer" data-email="${escapeHtml(o.email)}" title="Remover"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button></div>`).join('') : `<div class="empty">Só você organiza esse campeonato por enquanto.</div>`}
+        </div>
+        <div class="row row-stack">
+          <input type="text" id="champ-org-email" placeholder="E-mail de quem já tem licença Statix" style="flex:1;min-width:220px;">
+          <button class="btn primary" id="btn-add-organizer">Adicionar co-organizador</button>
+        </div>
+        <div id="champ-org-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
+      </div>
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Zona de risco</span>
+        <h2>Encerrar ou excluir</h2>
+        <div class="row">
+          <button class="btn" id="btn-toggle-archive">${championship.archived ? 'Reabrir campeonato' : 'Encerrar campeonato'}</button>
+          <button class="btn ghost" id="btn-delete-champ" style="color:var(--miss);">Excluir campeonato</button>
+        </div>
+        <div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Encerrar só trava novos confrontos, mantém tudo salvo. Excluir apaga o campeonato, times, jogadores e confrontos — sem volta.</div>
+      </div>` : ''}
       <div class="panel" style="margin-top:16px;">
         <span class="eyebrow">Times</span>
         <h2>Times do campeonato</h2>
@@ -540,8 +601,55 @@
       navigator.clipboard?.writeText(field.value).catch(()=>document.execCommand('copy'));
       showToast('Link copiado', 'success');
     });
-    if(teams.length>=2){
+    if(isOwner){
+      document.getElementById('btn-add-organizer').addEventListener('click', async ()=>{
+        const email = document.getElementById('champ-org-email').value.trim().toLowerCase();
+        const msg = document.getElementById('champ-org-msg');
+        if(!email){ msg.textContent = 'Digite um e-mail.'; return; }
+        msg.textContent = 'Adicionando…';
+        try{
+          await sbWrite('championship_organizers', { method:'POST', body: JSON.stringify({ championship_id: championship.id, email }) }, 'Co-organizador adicionado', true);
+          renderChampOverall(championship, true, isOwner);
+        }catch(e){ msg.textContent = 'Erro — confirme que esse e-mail já tem licença Statix.'; }
+      });
+      el.querySelectorAll('.btn-remove-organizer').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{
+          try{
+            await sbWrite(`championship_organizers?championship_id=eq.${championship.id}&email=eq.${encodeURIComponent(btn.dataset.email)}`, { method:'DELETE' }, 'Removido', true);
+            renderChampOverall(championship, true, isOwner);
+          }catch(e){}
+        });
+      });
+      document.getElementById('btn-toggle-archive').addEventListener('click', async ()=>{
+        try{
+          await sbWrite(`championships?id=eq.${championship.id}`, { method:'PATCH', body: JSON.stringify({ archived: !championship.archived }) }, championship.archived ? 'Campeonato reaberto' : 'Campeonato encerrado', true);
+          renderChampOverall({ ...championship, archived: !championship.archived }, true, isOwner);
+        }catch(e){}
+      });
+      document.getElementById('btn-delete-champ').addEventListener('click', async ()=>{
+        if(!confirm(`Excluir "${championship.name}" de vez? Times, jogadores e confrontos somem junto — não dá pra desfazer.`)) return;
+        try{
+          await sbWrite(`championships?id=eq.${championship.id}`, { method:'DELETE' }, 'Campeonato excluído', true);
+          goToDashboard();
+        }catch(e){}
+      });
+    }
+    if(teams.length>=2 && !championship.archived){
       document.getElementById('btn-new-match').addEventListener('click', ()=> renderMatchSetup(championship, teams));
+      document.getElementById('btn-draw-bracket').addEventListener('click', async ()=>{
+        const shuffled = [...teams].sort(()=>Math.random()-0.5);
+        const pairs = [];
+        for(let i=0;i+1<shuffled.length;i+=2) pairs.push([shuffled[i], shuffled[i+1]]);
+        const bye = shuffled.length % 2 ? shuffled[shuffled.length-1] : null;
+        if(!confirm(`Sortear ${pairs.length} confronto(s) pra 1ª rodada?${bye ? `\n${bye.name} fica de bye (folga) por ser número ímpar de times.` : ''}`)) return;
+        try{
+          for(const [a,b] of pairs){
+            await sb('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: a.id, team_b_id: b.id }) }, true);
+          }
+          showToast('Chave sorteada', 'success');
+          renderChampOverall(championship, true, isOwner);
+        }catch(e){ showToast('Falha ao sortear a chave.', 'error'); }
+      });
     }
     el.querySelectorAll('.btn-resume-match').forEach(btn=>{
       btn.addEventListener('click', ()=> renderMatchLive(championship, teams, btn.dataset.mid));
