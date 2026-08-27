@@ -455,7 +455,7 @@
 
   // ranking geral agora vem só dos confrontos que o organizador roda no scout — o técnico convidado não registra jogo
   async function fetchChampMatches(championshipId){
-    return sb(`matches?championship_id=eq.${championshipId}&select=id,finished,played_at,team_a_id,team_b_id,teamA:teams!matches_team_a_id_fkey(name),teamB:teams!matches_team_b_id_fkey(name),match_players(player_id,team_id,starter,players(name,num),teams(name)),match_stats(player_id,pts,reb,ast,fg3m,stl)&order=played_at.desc`);
+    return sb(`matches?championship_id=eq.${championshipId}&select=id,finished,played_at,team_a_id,team_b_id,wo_winner_team_id,teamA:teams!matches_team_a_id_fkey(name),teamB:teams!matches_team_b_id_fkey(name),match_players(player_id,team_id,starter,players(name,num),teams(name)),match_stats(player_id,pts,reb,ast,fg3m,stl)&order=played_at.desc`);
   }
 
   function champRankingsFromMatches(matches){
@@ -534,8 +534,9 @@
         <span class="eyebrow">Times</span>
         <h2>Times do campeonato</h2>
         <div class="roster-list" style="margin-bottom:16px;">
-          ${teams.length ? teams.map(t=>`<div class="roster-row"><span class="name">${escapeHtml(t.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${t.players.length} jogador(es)</span></div>`).join('') : `<div class="empty">Nenhum time cadastrado ainda.</div>`}
+          ${teams.length ? teams.map(t=>`<div class="roster-row"><span class="name">${escapeHtml(t.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${t.players.length} jogador(es)</span><button type="button" class="icon-btn danger btn-remove-team" data-id="${t.id}" data-name="${escapeHtml(t.name)}" title="Excluir time"><svg viewBox="0 0 24 24"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="18" y1="6" x2="6" y2="18"></line></svg></button></div>`).join('') : `<div class="empty">Nenhum time cadastrado ainda.</div>`}
         </div>
+        <div style="color:var(--ink-dim);font-size:11px;margin-bottom:14px;">Excluir um time também apaga os confrontos dele — se ele já tiver jogo marcado, prefira dar WO no histórico abaixo antes de excluir.</div>
         <div class="eyebrow">Cadastrar time sem link de convite</div>
         <p style="color:var(--ink-dim);font-size:12.5px;margin:-4px 0 12px;">Útil se o técnico não vai usar o app — você cadastra o time e o elenco direto por aqui.</p>
         <div class="row row-stack">
@@ -574,10 +575,13 @@
             }
             const a = scoreFor(m.teamA.name), b = scoreFor(m.teamB.name);
             const d = new Date(m.played_at);
+            const woLine = m.wo_winner_team_id ? `WO pra ${escapeHtml(m.wo_winner_team_id===m.team_a_id ? m.teamA.name : m.teamB.name)}` : `<span class="num" style="color:var(--ink-dim);">${a}</span> × <span class="num" style="color:var(--ink-dim);">${b}</span>`;
             return `<div class="roster-row">
-              <span class="name">${escapeHtml(m.teamA.name)} <span class="num" style="color:var(--ink-dim);">${a}</span> × <span class="num" style="color:var(--ink-dim);">${b}</span> ${escapeHtml(m.teamB.name)}</span>
+              <span class="name">${escapeHtml(m.teamA.name)} ${woLine} ${m.wo_winner_team_id ? '' : escapeHtml(m.teamB.name)}</span>
               <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${d.toLocaleDateString('pt-BR')} ${m.finished?'· encerrado':'· em andamento'}</span>
-              ${!m.finished ? `<button data-mid="${m.id}" class="btn-resume-match" style="color:var(--accent);">continuar</button>` : ''}
+              ${!m.finished ? `<button data-mid="${m.id}" class="btn-resume-match" style="color:var(--accent);">continuar</button>
+              <button data-mid="${m.id}" data-team="${m.team_a_id}" class="btn ghost btn-wo-match" title="Dar WO pro ${escapeHtml(m.teamA.name)}" style="font-size:11px;">WO ${escapeHtml(m.teamA.name)}</button>
+              <button data-mid="${m.id}" data-team="${m.team_b_id}" class="btn ghost btn-wo-match" title="Dar WO pro ${escapeHtml(m.teamB.name)}" style="font-size:11px;">WO ${escapeHtml(m.teamB.name)}</button>` : ''}
             </div>`;
           }).join('') : `<div class="empty">Nenhum confronto criado ainda.</div>`}
         </div>
@@ -653,6 +657,24 @@
     }
     el.querySelectorAll('.btn-resume-match').forEach(btn=>{
       btn.addEventListener('click', ()=> renderMatchLive(championship, teams, btn.dataset.mid));
+    });
+    el.querySelectorAll('.btn-wo-match').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Confirmar WO? O confronto encerra sem estatística, só com o vencedor registrado.')) return;
+        try{
+          await sbWrite(`matches?id=eq.${btn.dataset.mid}`, { method:'PATCH', body: JSON.stringify({ finished:true, wo_winner_team_id: btn.dataset.team }) }, 'WO registrado', true);
+          renderChampOverall(championship, true, isOwner);
+        }catch(e){}
+      });
+    });
+    el.querySelectorAll('.btn-remove-team').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm(`Excluir o time "${btn.dataset.name}"? Isso também apaga os confrontos dele. Não dá pra desfazer.`)) return;
+        try{
+          await sbWrite(`teams?id=eq.${btn.dataset.id}`, { method:'DELETE' }, 'Time excluído', true);
+          renderChampOverall(championship, true, isOwner);
+        }catch(e){}
+      });
     });
   }
 
