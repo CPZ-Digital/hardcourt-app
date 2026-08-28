@@ -488,16 +488,18 @@
         const played = (mp.seconds_played||0) > 0 || mp.starter;
         if(!played) return;
         if(!byPlayer[mp.player_id]){
-          byPlayer[mp.player_id] = { name:mp.players.name, num:mp.players.num, team:mp.teams.name, gp:0, pts:0,reb:0,ast:0,fg3m:0,stl:0 };
+          byPlayer[mp.player_id] = { name:mp.players.name, num:mp.players.num, team:mp.teams.name, gp:0, pts:0,reb:0,ast:0,fg3m:0,stl:0,sec:0 };
         }
         const s = m.match_stats.find(x=>x.player_id===mp.player_id) || {pts:0,reb:0,ast:0,fg3m:0,stl:0};
         const row = byPlayer[mp.player_id];
-        row.gp++; row.pts+=s.pts; row.reb+=s.reb; row.ast+=s.ast; row.fg3m+=s.fg3m; row.stl+=s.stl;
+        // confronto encerrado já tem seconds_played travado no valor final (finishChampMatch/WO
+        // congelam isso) — dá pra somar direto, sem precisar de mpSeconds() com relógio corrente.
+        row.gp++; row.pts+=s.pts; row.reb+=s.reb; row.ast+=s.ast; row.fg3m+=s.fg3m; row.stl+=s.stl; row.sec+=(mp.seconds_played||0);
       });
     });
     return Object.values(byPlayer).map(r=>{
       const div = r.gp||1;
-      return { ...r, ppg:r.pts/div, rpg:r.reb/div, apg:r.ast/div, spg:r.stl/div };
+      return { ...r, ppg:r.pts/div, rpg:r.reb/div, apg:r.ast/div, spg:r.stl/div, mpg:r.sec/div };
     }).sort((a,b)=>b.ppg-a.ppg);
   }
 
@@ -578,14 +580,14 @@
         <h2>Ranking geral</h2>
         <div style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11.5px;margin-bottom:14px;">${teams.length} time(s) participando</div>
         <div class="table-wrap">
-          <table><thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Jogos</th><th>PPG</th><th>RPG</th><th>APG</th><th>SPG</th></tr></thead>
+          <table><thead><tr><th>#</th><th>Jogador</th><th>Time</th><th>Jogos</th><th>MIN</th><th>PPG</th><th>RPG</th><th>APG</th><th>SPG</th></tr></thead>
           <tbody>
             ${rows.length ? rows.map((r,i)=>`<tr>
               <td class="rank-num">${i+1}</td>
               <td>${escapeHtml(r.name)} <span style="color:var(--ink-dim);">#${escapeHtml(r.num||'—')}</span></td>
               <td>${escapeHtml(r.team)}</td>
-              <td>${r.gp}</td><td>${r.ppg.toFixed(1)}</td><td>${r.rpg.toFixed(1)}</td><td>${r.apg.toFixed(1)}</td><td>${r.spg.toFixed(1)}</td>
-            </tr>`).join('') : `<tr><td colspan="8" class="empty">Nenhuma estatística registrada ainda.</td></tr>`}
+              <td>${r.gp}</td><td>${fmtMinutes(Math.round(r.mpg))}</td><td>${r.ppg.toFixed(1)}</td><td>${r.rpg.toFixed(1)}</td><td>${r.apg.toFixed(1)}</td><td>${r.spg.toFixed(1)}</td>
+            </tr>`).join('') : `<tr><td colspan="9" class="empty">Nenhuma estatística registrada ainda.</td></tr>`}
           </tbody></table>
         </div>
       </div>
@@ -1048,13 +1050,27 @@
     const mpOf = pid => match.match_players.find(mp=>mp.player_id===pid);
     const scoreOf = team => match.match_players.filter(mp=>mp.team_id===team.id).reduce((s,mp)=>s+(statOf(mp.player_id).pts||0),0);
 
+    function statLine(mp, p){
+      const s = statOf(mp.player_id);
+      return `<div class="roster-row public-player-row" data-pid="${p.id}" style="cursor:pointer;"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;white-space:nowrap;">${s.pts}p ${s.reb}r ${s.ast}a ${s.stl}rb ${s.pf}f · ${fmtMinutes(mpSeconds(mp))}</span></div>`;
+    }
     function publicTeamPanel(team){
       const roster = match.match_players.filter(mp=>mp.team_id===team.id);
+      // confronto encerrado: "em quadra" não quer dizer nada mais (é só quem tava lá no apito
+      // final) — mostra o box score completo, todo mundo que jogou, com estatística e tempo final.
+      // ao vivo: mantém a separação entre quem tá jogando agora e quem tá no banco.
+      if(match.finished){
+        const lines = roster.map(mp=>{ const p = playersById[mp.player_id]; return p ? statLine(mp, p) : ''; }).join('');
+        return `
+          <div class="panel">
+            <span class="eyebrow">${escapeHtml(team.name)}</span>
+            <div class="clock num" style="margin-bottom:10px;">${scoreOf(team)}</div>
+            <div class="roster-list">${lines}</div>
+          </div>`;
+      }
       const bench = roster.filter(mp=>!mp.on_court).map(mp=>playersById[mp.player_id]).filter(Boolean);
       const lines = roster.filter(mp=>mp.on_court).map(mp=>{
-        const p = playersById[mp.player_id]; if(!p) return '';
-        const s = statOf(mp.player_id);
-        return `<div class="roster-row public-player-row" data-pid="${p.id}" style="cursor:pointer;"><span class="jersey">${escapeHtml(p.num||'—')}</span><span class="name">${escapeHtml(p.name)}</span><span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;white-space:nowrap;">${s.pts}p ${s.reb}r ${s.ast}a ${s.stl}rb ${s.pf}f · ${fmtMinutes(mpSeconds(mp))}</span></div>`;
+        const p = playersById[mp.player_id]; return p ? statLine(mp, p) : '';
       }).join('');
       return `
         <div class="panel">
