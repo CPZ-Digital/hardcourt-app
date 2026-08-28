@@ -709,6 +709,16 @@
       btn.addEventListener('click', async ()=>{
         if(!confirm('Confirmar WO? O confronto encerra sem estatística, só com o vencedor registrado.')) return;
         try{
+          // se o confronto já tinha ficado "em andamento" com alguém em quadra, precisa fechar o
+          // tempo de jogo desses jogadores igual o "Encerrar confronto" normal já fazia — senão
+          // seconds_played fica travado em 0 e o jogador some do ranking mesmo tendo jogado.
+          try{
+            const match = await fetchMatch(btn.dataset.mid);
+            const onCourt = (match?.match_players || []).filter(mp=>mp.on_court && mp.last_in_at);
+            for(const mp of onCourt){
+              await sb(`match_players?match_id=eq.${btn.dataset.mid}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ seconds_played: mpSeconds(mp), last_in_at:null }) }, true);
+            }
+          }catch(_){}
           await sbWrite(`matches?id=eq.${btn.dataset.mid}`, { method:'PATCH', body: JSON.stringify({ finished:true, wo_winner_team_id: btn.dataset.team }) }, 'WO registrado', true);
           renderChampOverall(championship, true, isOwner);
         }catch(e){}
@@ -742,12 +752,12 @@
         <h2>${escapeHtml(team.name)}</h2>
         <div class="row" style="margin-bottom:10px;">
           <input type="text" id="champ-player-name" placeholder="Nome do jogador *" style="flex:2;min-width:160px;">
-          <input type="text" id="champ-player-num" placeholder="Nº" style="max-width:80px;">
+          <input type="text" id="champ-player-num" placeholder="Nº *" style="max-width:80px;" inputmode="numeric">
         </div>
         <div class="row">
           ${champPlayerAttrFieldsHTML()}
         </div>
-        <div style="color:var(--ink-dim);font-size:11px;margin:8px 0;">* campos obrigatórios: posição, nascimento, altura, peso. Envergadura, impulsão e velocidade são opcionais.</div>
+        <div style="color:var(--ink-dim);font-size:11px;margin:8px 0;">* campos obrigatórios: número da camisa, posição, altura e peso. Nascimento, envergadura, impulsão e velocidade são opcionais.</div>
         <button class="btn primary" id="champ-add-player">Adicionar jogador</button>
         <div id="champ-player-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
         <div class="roster-list" id="champ-roster" style="margin-top:12px;">
@@ -773,7 +783,8 @@
       const attrs = readChampPlayerAttrs();
       const missing = CHAMP_REQUIRED_ATTRS.filter(k=>!attrs[k]);
       if(!name){ msg.textContent = 'Preencha o nome do jogador.'; return; }
-      if(missing.length){ msg.textContent = 'Preencha posição, nascimento, altura e peso — são obrigatórios.'; return; }
+      if(!num){ msg.textContent = 'Preencha o número da camisa.'; return; }
+      if(missing.length){ msg.textContent = 'Preencha posição, altura e peso — são obrigatórios.'; return; }
       msg.textContent = '';
       btn.disabled = true;
       try{
@@ -859,6 +870,13 @@
     el.querySelectorAll('.starter-toggle').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         const on = !starters[btn.dataset.pid];
+        if(on){
+          // máximo 5 titulares em quadra por time — sem essa trava dava pra marcar o time inteiro
+          // como titular e a súmula abria com 6+ jogadores em quadra ao mesmo tempo (bug real de QA).
+          const team = btn.dataset.team === teamA.id ? teamA : teamB;
+          const currentStarters = team.players.filter(p=>starters[p.id]).length;
+          if(currentStarters >= 5){ alert('Só pode ter 5 titulares em quadra por time — tire um titular antes de marcar outro.'); return; }
+        }
         starters[btn.dataset.pid] = on;
         btn.classList.toggle('active', on);
         btn.textContent = on ? 'Titular' : 'Banco';
@@ -892,6 +910,20 @@
   async function fetchMatch(matchId){
     const rows = await sb(`matches?id=eq.${matchId}&select=*,match_players(player_id,team_id,starter,on_court,seconds_played,last_in_at),match_stats(player_id,pts,fg2m,fg2a,fg3m,fg3a,ftm,fta,reb,ast,stl,pf)`, {}, true);
     return rows[0];
+  }
+
+  // flusha o tempo de quadra de quem ainda tá em quadra e marca o confronto como encerrado —
+  // compartilhado entre o botão "Encerrar confronto" da súmula e o botão equivalente dentro do
+  // Modo Quadra, pra não ter duas cópias da mesma lógica (e do mesmo bug, se um dia precisar mexer).
+  async function finishChampMatch(matchId){
+    try{
+      const match = await fetchMatch(matchId);
+      for(const mp of match.match_players.filter(x=>x.on_court && x.last_in_at)){
+        await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ seconds_played: mpSeconds(mp), last_in_at:null }) }, true);
+      }
+      await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) }, 'Confronto encerrado', true);
+      return true;
+    }catch(e){ return false; }
   }
 
   // ---------- PLACAR PÚBLICO (link ?c=CODIGO&watch=MATCH_ID) ----------
@@ -1113,13 +1145,8 @@
       });
     });
     document.getElementById('btn-finish-match').addEventListener('click', async ()=>{
-      try{
-        for(const mp of match.match_players.filter(x=>x.on_court && x.last_in_at)){
-          await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ seconds_played: mpSeconds(mp), last_in_at:null }) }, true);
-        }
-        await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) }, 'Confronto encerrado', true);
-        renderChampOverall(championship, true);
-      }catch(e){}
+      if(!confirm('Encerrar esse confronto?')) return;
+      if(await finishChampMatch(matchId)) renderChampOverall(championship, true);
     });
     document.getElementById('btn-live-back').addEventListener('click', ()=> renderChampOverall(championship, true));
     document.getElementById('btn-match-court-mode').addEventListener('click', ()=>{
@@ -1171,6 +1198,18 @@
     document.getElementById('court-label-right').textContent = teamB.name;
     document.getElementById('court-bench-label-left').textContent = `Banco — ${teamA.name}`;
     document.getElementById('court-bench-label-right').textContent = `Banco — ${teamB.name}`;
+    // botão de encerrar direto na quadra, sem precisar sair do modo — pedido explícito, antes só
+    // dava pra encerrar voltando pra súmula. Reusa o mesmo botão do modo local, mas escondido lá.
+    const finishBtn = document.getElementById('btn-court-finish-match');
+    finishBtn.style.display = '';
+    finishBtn.onclick = async ()=>{
+      if(!confirm('Encerrar esse confronto?')) return;
+      if(await finishChampMatch(matchId)){
+        document.getElementById('court-overlay').classList.remove('open');
+        matchCourtCtx = null;
+        renderChampOverall(championship, true);
+      }
+    };
     renderMatchCourtMode();
   }
 
@@ -1295,19 +1334,24 @@
   // técnico convidado só cadastra o próprio elenco (titulares + reservas) — jogo, estatística, ranking e
   // gráfico ficam exclusivos com o organizador/scout. Nada de "premium" aparece aqui de propósito.
   // campos do cadastro de jogador no campeonato: reaproveita o mesmo ATTR_FIELDS do modo local
-  // (app-core.js) pra manter os dados consistentes entre os dois modos. Posição/nascimento/altura/peso
-  // são obrigatórios (pedido explícito); envergadura/impulsão/velocidade ficam opcionais.
-  const CHAMP_REQUIRED_ATTRS = ['position','birthdate','height','weight'];
+  // (app-core.js) pra manter os dados consistentes entre os dois modos. Posição/altura/peso são
+  // obrigatórios; nascimento/envergadura/impulsão/velocidade ficam opcionais (nascimento não valia
+  // tanto a pena travar o cadastro, pedido explícito).
+  const CHAMP_REQUIRED_ATTRS = ['position','height','weight'];
 
   function champPlayerAttrFieldsHTML(){
     const today = new Date().toISOString().slice(0,10);
     return ATTR_FIELDS.map(f=>{
       const req = CHAMP_REQUIRED_ATTRS.includes(f.key);
       const limits = f.type==='date' ? `max="${today}"` : [f.min!=null?`min="${f.min}"`:'', f.max!=null?`max="${f.max}"`:''].join(' ');
+      // campo type=date não mostra placeholder em boa parte dos navegadores (fica em branco sem
+      // nenhuma pista do que é) — por isso ganha um <label> visível de verdade, e não só o texto
+      // dentro do próprio input como os outros campos.
       const input = f.type==='select'
         ? `<select id="champ-attr-${f.key}" style="min-width:170px;"><option value="">${escapeHtml(f.label)}${req?' *':''}</option>${f.options.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select>`
         : `<input type="${f.type}" id="champ-attr-${f.key}" placeholder="${escapeHtml(f.label)}${req?' *':''}" ${f.step?`step="${f.step}"`:''} ${limits} style="min-width:170px;">`;
-      return `<div class="field" style="flex:1;margin:0;">${input}</div>`;
+      const label = f.type==='date' ? `<label style="display:block;font-size:11px;color:var(--ink-dim);margin-bottom:3px;">${escapeHtml(f.label)}${req?' *':''}</label>` : '';
+      return `<div class="field" style="flex:1;margin:0;">${label}${input}</div>`;
     }).join('');
   }
 
@@ -1360,12 +1404,12 @@
         ${archived ? '' : `
         <div class="row" style="margin-bottom:10px;">
           <input type="text" id="champ-player-name" placeholder="Nome do jogador *" style="flex:2;min-width:160px;">
-          <input type="text" id="champ-player-num" placeholder="Nº" style="max-width:80px;">
+          <input type="text" id="champ-player-num" placeholder="Nº *" style="max-width:80px;" inputmode="numeric">
         </div>
         <div class="row">
           ${champPlayerAttrFieldsHTML()}
         </div>
-        <div style="color:var(--ink-dim);font-size:11px;margin:8px 0;">* campos obrigatórios: posição, nascimento, altura, peso. Envergadura, impulsão e velocidade são opcionais.</div>
+        <div style="color:var(--ink-dim);font-size:11px;margin:8px 0;">* campos obrigatórios: número da camisa, posição, altura e peso. Nascimento, envergadura, impulsão e velocidade são opcionais.</div>
         <button class="btn primary" id="champ-add-player">Adicionar jogador</button>
         <div id="champ-player-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>`}
         <div class="roster-list" id="champ-roster" style="margin-top:12px;">
@@ -1404,7 +1448,8 @@
       const attrs = readChampPlayerAttrs();
       const missing = CHAMP_REQUIRED_ATTRS.filter(k=>!attrs[k]);
       if(!name){ msg.textContent = 'Preencha o nome do jogador.'; return; }
-      if(missing.length){ msg.textContent = 'Preencha posição, nascimento, altura e peso — são obrigatórios.'; return; }
+      if(!num){ msg.textContent = 'Preencha o número da camisa.'; return; }
+      if(missing.length){ msg.textContent = 'Preencha posição, altura e peso — são obrigatórios.'; return; }
       msg.textContent = '';
       btn.disabled = true;
       try{

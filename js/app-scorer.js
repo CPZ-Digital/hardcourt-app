@@ -83,6 +83,11 @@
     document.getElementById('court-bench-dual').classList.remove('open');
     document.getElementById('court-label-left').textContent = '';
     document.getElementById('court-label-right').textContent = '';
+    // botão de "encerrar confronto" é exclusivo do modo campeonato — esconde e desliga aqui pra
+    // não vazar de uma sessão de campeonato aberta antes, no mesmo overlay compartilhado.
+    const finishBtn = document.getElementById('btn-court-finish-match');
+    finishBtn.style.display = 'none';
+    finishBtn.onclick = null;
     document.getElementById('court-overlay').classList.add('open');
     renderCourtMode();
   });
@@ -91,7 +96,7 @@
     if(matchCourtCtx){
       const { championship, matchId } = matchCourtCtx;
       matchCourtCtx = null;
-      fetchChampTree(championship.id).then(teams=> renderMatchLive(championship, teams, matchId));
+      fetchChampSnapshot(championship.invite_code).then(snap=> renderMatchLive(championship, snap.teams, matchId));
     }
   });
   document.getElementById('btn-close-stat-modal').addEventListener('click', ()=>{
