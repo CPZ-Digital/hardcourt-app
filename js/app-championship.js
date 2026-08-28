@@ -517,6 +517,16 @@
       return;
     }
     const rows = champRankingsFromMatches(matches);
+    const format = championship.format || 'pontos_corridos';
+    const maxRound = matches.length ? Math.max(...matches.map(m=>m.round||1)) : 0;
+    const maxRoundMatches = matches.filter(m=>(m.round||1)===maxRound);
+    const maxRoundAllFinished = maxRoundMatches.length>0 && maxRoundMatches.every(m=>m.finished);
+    const aliveTeams = champAliveTeams(teams, matches);
+    const champion = (format==='eliminatorias' && matches.length>0 && maxRoundAllFinished && aliveTeams.length<=1) ? aliveTeams[0] : null;
+    const canAdvance = format==='eliminatorias' && matches.length>0 && maxRoundAllFinished && aliveTeams.length>1;
+    const canDrawFirstRound = format==='eliminatorias' && matches.length===0;
+    const canGenerateRoundRobin = format==='pontos_corridos' && matches.length===0;
+    const standings = format==='pontos_corridos' ? champStandingsFromMatches(teams, matches) : null;
     const backBtn = `<button class="btn ghost" id="btn-champ-back" style="margin-bottom:16px;">← voltar</button>`;
     const inviteLink = `${location.origin}${location.pathname}?c=${championship.invite_code}`;
     el.innerHTML = `
@@ -529,10 +539,23 @@
           <button class="btn" id="btn-copy-invite">Copiar link de convite</button>
           <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:12px;">código: ${escapeHtml(championship.invite_code)}</span>
         </div>
+        <div class="row" style="margin-bottom:14px;align-items:center;">
+          <span class="eyebrow" style="margin:0;">Formato</span>
+          <select id="champ-format" ${championship.archived?'disabled':''} style="max-width:280px;">
+            <option value="pontos_corridos" ${format==='pontos_corridos'?'selected':''}>Pontos corridos (todos × todos)</option>
+            <option value="eliminatorias" ${format==='eliminatorias'?'selected':''}>Eliminatórias (mata-mata)</option>
+          </select>
+        </div>
         <div class="row">
           <button class="btn primary" id="btn-new-match" ${teams.length<2 || championship.archived ?'disabled':''}>Novo confronto (scout ao vivo)</button>
-          <button class="btn" id="btn-draw-bracket" ${teams.length<2 || championship.archived ?'disabled':''}>🎲 Sortear chave (1ª rodada)</button>
+          ${format==='eliminatorias' ? `
+            <button class="btn" id="btn-draw-bracket" ${!canDrawFirstRound || teams.length<2 || championship.archived ?'disabled':''}>🎲 Sortear chave (1ª rodada)</button>
+            ${canAdvance && !championship.archived ? `<button class="btn" id="btn-advance-round">▶ Gerar rodada ${maxRound+1}</button>` : ''}
+          ` : `
+            <button class="btn" id="btn-round-robin" ${!canGenerateRoundRobin || teams.length<2 || championship.archived ?'disabled':''}>🎲 Gerar confrontos (todos × todos)</button>
+          `}
         </div>
+        ${champion ? `<div style="margin-top:10px;color:var(--make);font-weight:700;">🏆 Campeão: ${escapeHtml(champion.name)}</div>` : ''}
         ${teams.length<2 ? `<div style="margin-top:8px;color:var(--ink-dim);font-size:12px;">Precisa de pelo menos 2 times cadastrados no campeonato — mande o link de convite acima pros técnicos, ou cadastre um time você mesmo abaixo.</div>` : ''}
         ${championship.archived ? `<div style="margin-top:8px;color:var(--miss);font-size:12px;">Campeonato encerrado — só leitura, não dá mais pra criar confronto novo.</div>` : ''}
       </div>
@@ -575,6 +598,19 @@
         </div>
         <div id="champ-newteam-msg" style="margin-top:10px;font-family:'JetBrains Mono';font-size:12px;color:var(--miss);"></div>
       </div>
+      ${format==='pontos_corridos' ? `
+      <div class="panel" style="margin-top:16px;">
+        <span class="eyebrow">Temporada</span>
+        <h2>Classificação</h2>
+        <div class="table-wrap">
+          <table><thead><tr><th>#</th><th>Time</th><th>J</th><th>V</th><th>D</th><th>SG</th></tr></thead>
+          <tbody>
+            ${standings.length ? standings.map((t,i)=>`<tr>
+              <td class="rank-num">${i+1}</td><td>${escapeHtml(t.name)}</td><td>${t.gp}</td><td>${t.w}</td><td>${t.l}</td><td>${t.sg>0?'+':''}${t.sg}</td>
+            </tr>`).join('') : `<tr><td colspan="6" class="empty">Nenhum confronto encerrado ainda.</td></tr>`}
+          </tbody></table>
+        </div>
+      </div>` : ''}
       <div class="panel" style="margin-top:16px;">
         <span class="eyebrow">Temporada</span>
         <h2>Ranking geral</h2>
@@ -595,7 +631,7 @@
         <span class="eyebrow">Histórico</span>
         <h2>Confrontos</h2>
         <div class="roster-list">
-          ${matches.length ? matches.map(m=>{
+          ${matches.length ? matches.map((m,idx)=>{
             function scoreFor(teamName){
               return m.match_stats.reduce((s,x)=>{
                 const mp = m.match_players.find(p=>p.player_id===x.player_id);
@@ -607,7 +643,11 @@
             const resultLine = m.wo_winner_team_id
               ? `<span style="color:var(--miss);">W.O. pra ${escapeHtml(m.wo_winner_team_id===m.team_a_id ? m.teamA.name : m.teamB.name)}</span>`
               : `<span class="num" style="color:var(--ink-dim);">${a}</span> × <span class="num" style="color:var(--ink-dim);">${b}</span>`;
-            return `<div class="roster-row">
+            // eliminatórias: agrupa visualmente por rodada (chaveamento) — pontos corridos não tem
+            // rodada de verdade (todo mundo já sai marcado de uma vez), não precisa do cabeçalho.
+            const roundHeading = (format==='eliminatorias' && (idx===0 || (matches[idx-1].round||1)!==(m.round||1)))
+              ? `<div class="eyebrow" style="margin-top:${idx===0?'0':'14px'};">Rodada ${m.round||1}</div>` : '';
+            return `${roundHeading}<div class="roster-row">
               <span class="name">${escapeHtml(m.teamA.name)} vs ${escapeHtml(m.teamB.name)} — ${resultLine}</span>
               <span style="color:var(--ink-dim);font-family:'JetBrains Mono';font-size:11px;">${d.toLocaleDateString('pt-BR')} ${m.finished?'· encerrado':'· em andamento'}</span>
               ${!m.finished ? `<button data-mid="${m.id}" class="btn btn-resume-match" style="color:var(--accent);">continuar</button>
@@ -639,6 +679,13 @@
       field.select();
       navigator.clipboard?.writeText(field.value).catch(()=>document.execCommand('copy'));
       showToast('Link copiado', 'success');
+    });
+    document.getElementById('champ-format').addEventListener('change', async (ev)=>{
+      const newFormat = ev.currentTarget.value;
+      try{
+        await sbWrite(`championships?id=eq.${championship.id}`, { method:'PATCH', body: JSON.stringify({ format: newFormat }) }, 'Formato atualizado', true);
+        renderChampOverall({ ...championship, format: newFormat }, true, isOwner);
+      }catch(e){ renderChampOverall(championship, true, isOwner); }
     });
     if(isOwner){
       document.getElementById('btn-add-organizer').addEventListener('click', async ()=>{
@@ -675,33 +722,45 @@
     }
     if(teams.length>=2 && !championship.archived){
       document.getElementById('btn-new-match').addEventListener('click', ()=> renderMatchSetup(championship, teams));
-      document.getElementById('btn-draw-bracket').addEventListener('click', async (ev)=>{
+      const drawBtn = document.getElementById('btn-draw-bracket');
+      if(drawBtn) drawBtn.addEventListener('click', async (ev)=>{
         const btn = ev.currentTarget;
         if(btn.disabled) return;
-        const shuffled = [...teams].sort(()=>Math.random()-0.5);
-        const pairs = [];
-        for(let i=0;i+1<shuffled.length;i+=2) pairs.push([shuffled[i], shuffled[i+1]]);
-        const bye = shuffled.length % 2 ? shuffled[shuffled.length-1] : null;
+        const { pairs, bye } = pairWithBye(teams);
         if(!confirm(`Sortear ${pairs.length} confronto(s) pra 1ª rodada?${bye ? `\n${bye.name} fica de bye (folga) por ser número ímpar de times.` : ''}`)) return;
         btn.disabled = true;
         try{
-          for(const [a,b] of pairs){
-            const rows = await sb('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: a.id, team_b_id: b.id }) }, true);
-            const match = rows[0];
-            // sem isso o confronto sorteado nascia sem nenhum match_players — a súmula ao vivo abria
-            // vazia e sem nenhum controle pra colocar jogador, virando um beco sem saída (bug real
-            // achado em QA). Entra todo mundo como banco; o organizador promove titular por substituição.
-            const rosterRows = [...a.players, ...b.players].map(p=>({
-              match_id: match.id,
-              player_id: p.id,
-              team_id: a.players.includes(p) ? a.id : b.id,
-              starter: false, on_court: false, last_in_at: null
-            }));
-            if(rosterRows.length) await sb('match_players', { method:'POST', body: JSON.stringify(rosterRows) }, true);
-          }
+          await createRoundMatches(championship, pairs, 1);
           showToast('Chave sorteada', 'success');
           renderChampOverall(championship, true, isOwner);
         }catch(e){ showToast('Falha ao sortear a chave.', 'error'); btn.disabled = false; }
+      });
+      const advanceBtn = document.getElementById('btn-advance-round');
+      if(advanceBtn) advanceBtn.addEventListener('click', async (ev)=>{
+        const btn = ev.currentTarget;
+        if(btn.disabled) return;
+        const { pairs, bye } = pairWithBye(aliveTeams);
+        if(!confirm(`Gerar a rodada ${maxRound+1} com ${pairs.length} confronto(s)?${bye ? `\n${bye.name} fica de bye (folga) por ser número ímpar de times ainda vivos.` : ''}`)) return;
+        btn.disabled = true;
+        try{
+          await createRoundMatches(championship, pairs, maxRound+1);
+          showToast(`Rodada ${maxRound+1} gerada`, 'success');
+          renderChampOverall(championship, true, isOwner);
+        }catch(e){ showToast('Falha ao gerar a próxima rodada.', 'error'); btn.disabled = false; }
+      });
+      const roundRobinBtn = document.getElementById('btn-round-robin');
+      if(roundRobinBtn) roundRobinBtn.addEventListener('click', async (ev)=>{
+        const btn = ev.currentTarget;
+        if(btn.disabled) return;
+        const pairs = [];
+        for(let i=0;i<teams.length;i++) for(let j=i+1;j<teams.length;j++) pairs.push([teams[i], teams[j]]);
+        if(!confirm(`Gerar todos os ${pairs.length} confronto(s) do turno único (cada time joga contra todos os outros uma vez)?`)) return;
+        btn.disabled = true;
+        try{
+          await createRoundMatches(championship, pairs, 1);
+          showToast('Confrontos gerados', 'success');
+          renderChampOverall(championship, true, isOwner);
+        }catch(e){ showToast('Falha ao gerar os confrontos.', 'error'); btn.disabled = false; }
       });
     }
     el.querySelectorAll('.btn-resume-match').forEach(btn=>{
@@ -983,6 +1042,77 @@
   // flusha o tempo de quadra de quem ainda tá em quadra e marca o confronto como encerrado —
   // compartilhado entre o botão "Encerrar confronto" da súmula e o botão equivalente dentro do
   // Modo Quadra, pra não ter duas cópias da mesma lógica (e do mesmo bug, se um dia precisar mexer).
+  // cria os confrontos de uma leva (usado pelo sorteio de chave, pelo "gerar confrontos" de pontos
+  // corridos e por "gerar próxima rodada" das eliminatórias) — sempre com match_players já povoado
+  // (todo mundo no banco), senão a súmula abre vazia sem jeito de colocar titular (bug real de QA).
+  async function createRoundMatches(championship, pairs, round){
+    for(const [a,b] of pairs){
+      const rows = await sb('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: a.id, team_b_id: b.id, round }) }, true);
+      const match = rows[0];
+      const rosterRows = [...a.players, ...b.players].map(p=>({
+        match_id: match.id,
+        player_id: p.id,
+        team_id: a.players.includes(p) ? a.id : b.id,
+        starter: false, on_court: false, last_in_at: null
+      }));
+      if(rosterRows.length) await sb('match_players', { method:'POST', body: JSON.stringify(rosterRows) }, true);
+    }
+  }
+
+  function pairWithBye(list){
+    const shuffled = [...list].sort(()=>Math.random()-0.5);
+    const pairs = [];
+    for(let i=0;i+1<shuffled.length;i+=2) pairs.push([shuffled[i], shuffled[i+1]]);
+    const bye = shuffled.length % 2 ? shuffled[shuffled.length-1] : null;
+    return { pairs, bye };
+  }
+
+  // vencedor de um confronto encerrado (por placar ou W.O.) — usado pra saber quem segue vivo na
+  // eliminatória. Confronto sem estatística nenhuma (0x0 real) não decide nada, fica de fora.
+  function matchWinnerId(m){
+    if(m.wo_winner_team_id) return m.wo_winner_team_id;
+    if(!m.finished) return null;
+    const scoreFor = teamId => m.match_stats.reduce((s,x)=>{
+      const mp = m.match_players.find(p=>p.player_id===x.player_id);
+      return mp && mp.team_id===teamId ? s+(x.pts||0) : s;
+    }, 0);
+    const a = scoreFor(m.team_a_id), b = scoreFor(m.team_b_id);
+    if(a===b) return null;
+    return a>b ? m.team_a_id : m.team_b_id;
+  }
+
+  // times que ainda não perderam nenhum confronto — inclui quem tirou bye (nunca jogou ainda).
+  // Gerar a próxima rodada da eliminatória é sempre "pareia quem sobrou disso", nunca precisa
+  // rastrear bye separadamente rodada a rodada.
+  function champAliveTeams(teams, matches){
+    const losers = new Set();
+    matches.forEach(m=>{
+      const winner = matchWinnerId(m);
+      if(!winner) return;
+      losers.add(winner===m.team_a_id ? m.team_b_id : m.team_a_id);
+    });
+    return teams.filter(t=>!losers.has(t.id));
+  }
+
+  // tabela de classificação (pontos corridos) — vitórias/derrotas por time, W.O. conta como jogo
+  // vencido/perdido normal, saldo é só informativo (desempate).
+  function champStandingsFromMatches(teams, matches){
+    const byTeam = Object.fromEntries(teams.map(t=>[t.id, { id:t.id, name:t.name, gp:0, w:0, l:0, pf:0, pa:0 }]));
+    const scoreFor = (m, teamId) => m.match_stats.reduce((s,x)=>{
+      const mp = m.match_players.find(p=>p.player_id===x.player_id);
+      return mp && mp.team_id===teamId ? s+(x.pts||0) : s;
+    }, 0);
+    matches.forEach(m=>{
+      const winner = matchWinnerId(m);
+      const a = byTeam[m.team_a_id], b = byTeam[m.team_b_id];
+      if(!winner || !a || !b) return;
+      const scoreA = scoreFor(m, m.team_a_id), scoreB = scoreFor(m, m.team_b_id);
+      a.gp++; b.gp++; a.pf+=scoreA; a.pa+=scoreB; b.pf+=scoreB; b.pa+=scoreA;
+      if(winner===a.id){ a.w++; b.l++; } else { b.w++; a.l++; }
+    });
+    return Object.values(byTeam).map(t=>({ ...t, sg:t.pf-t.pa })).sort((x,y)=> y.w-x.w || y.sg-x.sg || y.pf-x.pf);
+  }
+
   async function finishChampMatch(matchId){
     try{
       const match = await fetchMatch(matchId);
