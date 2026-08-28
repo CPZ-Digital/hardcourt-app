@@ -635,7 +635,15 @@ footer{
     <div class="court-rotate-wrap">
       <div class="court-stage">
         <div class="court-topbar">
-          <div id="court-score" class="num">vs —</div>
+          <div class="row" style="align-items:center;gap:10px;">
+            <div id="court-score" class="num">vs —</div>
+            <div class="row" id="court-clock-controls" style="display:none;gap:6px;align-items:center;">
+              <div id="court-clock" class="num" style="font-size:18px;min-width:56px;">0:00</div>
+              <button class="btn" id="court-clock-start" style="padding:8px 10px;font-size:11px;">▶</button>
+              <button class="btn" id="court-clock-pause" style="padding:8px 10px;font-size:11px;display:none;">⏸</button>
+              <button class="btn ghost" id="court-clock-stop" style="padding:8px 10px;font-size:11px;">⏹</button>
+            </div>
+          </div>
           <div class="row" style="gap:8px;">
             <button class="btn" id="btn-court-finish-match" style="display:none;">Encerrar confronto</button>
             <button class="btn ghost" id="btn-close-court">✕ sair do modo quadra</button>

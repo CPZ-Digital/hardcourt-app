@@ -710,16 +710,15 @@
         if(!confirm('Confirmar WO? O confronto encerra sem estatística, só com o vencedor registrado.')) return;
         try{
           // se o confronto já tinha ficado "em andamento" com alguém em quadra, precisa fechar o
-          // tempo de jogo desses jogadores igual o "Encerrar confronto" normal já fazia — senão
-          // seconds_played fica travado em 0 e o jogador some do ranking mesmo tendo jogado.
+          // tempo de jogo/cronômetro desses jogadores igual o "Encerrar confronto" normal já fazia
+          // — senão seconds_played fica travado em 0 e o jogador some do ranking mesmo tendo jogado.
+          let clockFinal = 0;
           try{
             const match = await fetchMatch(btn.dataset.mid);
-            const onCourt = (match?.match_players || []).filter(mp=>mp.on_court && mp.last_in_at);
-            for(const mp of onCourt){
-              await sb(`match_players?match_id=eq.${btn.dataset.mid}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ seconds_played: mpSeconds(mp), last_in_at:null }) }, true);
-            }
+            await freezeOnCourtPlayers(btn.dataset.mid, match);
+            clockFinal = matchClockSeconds(match);
           }catch(_){}
-          await sbWrite(`matches?id=eq.${btn.dataset.mid}`, { method:'PATCH', body: JSON.stringify({ finished:true, wo_winner_team_id: btn.dataset.team }) }, 'WO registrado', true);
+          await sbWrite(`matches?id=eq.${btn.dataset.mid}`, { method:'PATCH', body: JSON.stringify({ finished:true, wo_winner_team_id: btn.dataset.team, clock_seconds: clockFinal, clock_running_since: null }) }, 'WO registrado', true);
           renderChampOverall(championship, true, isOwner);
         }catch(e){}
       });
@@ -889,14 +888,15 @@
       try{
         const matchRows = await sbWrite('matches', { method:'POST', body: JSON.stringify({ championship_id: championship.id, team_a_id: teamA.id, team_b_id: teamB.id }) }, 'Confronto criado', true);
         const match = matchRows[0];
-        const now = new Date().toISOString();
         const rosterRows = [...teamA.players, ...teamB.players].map(p=>({
           match_id: match.id,
           player_id: p.id,
           team_id: teamA.players.includes(p) ? teamA.id : teamB.id,
           starter: !!starters[p.id],
           on_court: !!starters[p.id],
-          last_in_at: starters[p.id] ? now : null
+          // last_in_at só é setado quando o cronômetro do jogo é iniciado (wireMatchClockControls/
+          // startMatchClock) — antes disso ninguém deveria estar "acumulando" tempo de quadra.
+          last_in_at: null
         }));
         if(rosterRows.length) await sbWrite('match_players', { method:'POST', body: JSON.stringify(rosterRows) }, 'Escalação salva', true);
         renderMatchLive(championship, teams, match.id);
@@ -912,16 +912,81 @@
     return rows[0];
   }
 
+  // cronômetro de jogo — mesmo padrão de mpSeconds() pro tempo de quadra: soma o acumulado com o
+  // trecho corrente se estiver rodando.
+  function matchClockSeconds(match){
+    let sec = match.clock_seconds || 0;
+    if(match.clock_running_since) sec += Math.max(0, Math.round((Date.now() - new Date(match.clock_running_since).getTime())/1000));
+    return sec;
+  }
+
+  // congela o tempo de quadra de quem tá em quadra (mesmo helper usado por encerrar/WO/pausar) —
+  // sem isso o jogador continuaria contando tempo de jogo com o relógio da partida parado.
+  async function freezeOnCourtPlayers(matchId, match){
+    for(const mp of match.match_players.filter(x=>x.on_court && x.last_in_at)){
+      await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ seconds_played: mpSeconds(mp), last_in_at:null }) }, true);
+    }
+  }
+
+  async function startMatchClock(matchId){
+    const match = await fetchMatch(matchId);
+    const now = new Date().toISOString();
+    await sb(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ clock_running_since: now }) }, true);
+    // quem já tá em quadra sem last_in_at (titular que nunca rodou o relógio, ou retomando de uma
+    // pausa) passa a contar tempo de novo, junto com o cronômetro.
+    for(const mp of match.match_players.filter(x=>x.on_court && !x.last_in_at)){
+      await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ last_in_at: now }) }, true);
+    }
+  }
+
+  async function pauseMatchClock(matchId){
+    const match = await fetchMatch(matchId);
+    const total = matchClockSeconds(match);
+    await freezeOnCourtPlayers(matchId, match);
+    await sb(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ clock_seconds: total, clock_running_since: null }) }, true);
+  }
+
+  async function stopMatchClock(matchId){
+    const match = await fetchMatch(matchId);
+    await freezeOnCourtPlayers(matchId, match);
+    await sb(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ clock_seconds: 0, clock_running_since: null }) }, true);
+  }
+
+  // controles de iniciar/pausar/parar reaproveitados pela súmula e pelo Modo Quadra — cada tela
+  // só passa o id do bloco onde o relógio deve aparecer e a função de re-render depois da ação.
+  let clockTickTimer = null;
+  function wireMatchClockControls(prefix, match, onChange){
+    const elClock = document.getElementById(`${prefix}-clock`);
+    const btnStart = document.getElementById(`${prefix}-clock-start`);
+    const btnPause = document.getElementById(`${prefix}-clock-pause`);
+    const btnStop = document.getElementById(`${prefix}-clock-stop`);
+    if(!elClock) return;
+    const running = !!match.clock_running_since;
+    elClock.textContent = fmtMinutes(matchClockSeconds(match));
+    if(btnStart) btnStart.style.display = running ? 'none' : '';
+    if(btnPause) btnPause.style.display = running ? '' : 'none';
+    clearInterval(clockTickTimer);
+    if(running){
+      clockTickTimer = setInterval(()=>{ elClock.textContent = fmtMinutes(matchClockSeconds(match)); }, 1000);
+    }
+    if(btnStart) btnStart.onclick = async ()=>{ btnStart.disabled = true; try{ await startMatchClock(match.id); onChange(); }catch(e){ btnStart.disabled = false; } };
+    if(btnPause) btnPause.onclick = async ()=>{ btnPause.disabled = true; try{ await pauseMatchClock(match.id); onChange(); }catch(e){ btnPause.disabled = false; } };
+    if(btnStop) btnStop.onclick = async ()=>{
+      if(!confirm('Zerar o cronômetro? Volta pra 0:00 (o tempo de jogo já registrado não muda).')) return;
+      btnStop.disabled = true;
+      try{ await stopMatchClock(match.id); onChange(); }catch(e){ btnStop.disabled = false; }
+    };
+  }
+
   // flusha o tempo de quadra de quem ainda tá em quadra e marca o confronto como encerrado —
   // compartilhado entre o botão "Encerrar confronto" da súmula e o botão equivalente dentro do
   // Modo Quadra, pra não ter duas cópias da mesma lógica (e do mesmo bug, se um dia precisar mexer).
   async function finishChampMatch(matchId){
     try{
       const match = await fetchMatch(matchId);
-      for(const mp of match.match_players.filter(x=>x.on_court && x.last_in_at)){
-        await sb(`match_players?match_id=eq.${matchId}&player_id=eq.${mp.player_id}`, { method:'PATCH', body: JSON.stringify({ seconds_played: mpSeconds(mp), last_in_at:null }) }, true);
-      }
-      await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true }) }, 'Confronto encerrado', true);
+      await freezeOnCourtPlayers(matchId, match);
+      // trava o cronômetro no valor final em vez de deixar "rodando" num jogo já encerrado.
+      await sbWrite(`matches?id=eq.${matchId}`, { method:'PATCH', body: JSON.stringify({ finished:true, clock_seconds: matchClockSeconds(match), clock_running_since: null }) }, 'Confronto encerrado', true);
       return true;
     }catch(e){ return false; }
   }
@@ -1007,6 +1072,7 @@
       <div class="panel">
         <span class="eyebrow">${match.finished ? 'Confronto encerrado' : '🔴 Ao vivo'} · ${escapeHtml(championship.name)}</span>
         <h2>${escapeHtml(teamA?.name||'?')} ${scoreOf(teamA)} × ${scoreOf(teamB)} ${escapeHtml(teamB?.name||'?')}</h2>
+        <div class="num" style="font-size:20px;color:var(--ink-dim);">⏱ ${fmtMinutes(matchClockSeconds(match))}${match.clock_running_since ? '' : ' · pausado'}</div>
       </div>
       <div class="match-columns">
         ${publicTeamPanel(teamA)}
@@ -1098,7 +1164,13 @@
       <div class="panel">
         <span class="eyebrow">Confronto ao vivo</span>
         <h2>${escapeHtml(teamA.name)} ${teamScore(teamA)} × ${teamScore(teamB)} ${escapeHtml(teamB.name)}</h2>
-        <div class="row">
+        <div class="row" style="align-items:center;">
+          <div id="live-clock" class="num" style="font-size:28px;min-width:90px;">${fmtMinutes(matchClockSeconds(match))}</div>
+          <button class="btn" id="live-clock-start">▶ iniciar</button>
+          <button class="btn" id="live-clock-pause" style="display:none;">⏸ pausar</button>
+          <button class="btn ghost" id="live-clock-stop">⏹ parar</button>
+        </div>
+        <div class="row" style="margin-top:10px;">
           <button class="btn" id="btn-match-court-mode">🏀 Modo quadra</button>
           <button class="btn" id="btn-share-public">🔗 Compartilhar placar</button>
           <button class="btn primary" id="btn-finish-match">Encerrar confronto</button>
@@ -1109,6 +1181,8 @@
         ${teamColumn(teamA)}
         ${teamColumn(teamB)}
       </div>`;
+
+    wireMatchClockControls('live', match, ()=> renderMatchLive(championship, teams, matchId));
 
     el.querySelectorAll('.stat-btn').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
@@ -1210,6 +1284,7 @@
         renderChampOverall(championship, true);
       }
     };
+    document.getElementById('court-clock-controls').style.display = '';
     renderMatchCourtMode();
   }
 
@@ -1228,6 +1303,7 @@
     document.getElementById('court-score').textContent = `${ctx.teamA.name} ${scoreOf(ctx.teamA.id)} × ${scoreOf(ctx.teamB.id)} ${ctx.teamB.name}`;
     document.getElementById('court-score-left').textContent = scoreOf(ctx.teamA.id);
     document.getElementById('court-score-right').textContent = scoreOf(ctx.teamB.id);
+    wireMatchClockControls('court', match, renderMatchCourtMode);
 
     const wrap = document.getElementById('court-players');
     wrap.innerHTML = '';
