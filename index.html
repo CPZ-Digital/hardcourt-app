@@ -524,6 +524,10 @@ footer{
 #champ-body .row{ gap:8px; }
 #champ-body .roster-row{ padding:6px 8px; gap:8px; }
 #champ-body p{ font-size:12px!important; }
+
+/* seletor de time nas abas Jogos/Rankings/Sorteio — evita ter que voltar em Elenco só pra trocar
+   o time ativo, pedido explícito de quem gerencia mais de um time no mesmo dispositivo/login. */
+.mini-team-select{ max-width:260px; margin:-4px 0 14px; }
 </style>
 
 <div id="auth-gate" class="auth-gate">
@@ -592,6 +596,7 @@ footer{
     <div class="panel">
       <span class="eyebrow">Temporada</span>
       <h2>Jogos</h2>
+      <select id="games-team-select" class="mini-team-select"></select>
       <div class="row">
         <input type="text" id="opponent-name" placeholder="Time adversário" style="flex:2;min-width:180px;">
         <button class="btn primary" id="btn-start-game">Iniciar novo jogo</button>
@@ -688,6 +693,7 @@ footer{
     <div class="panel">
       <span class="eyebrow">Temporada</span>
       <h2>Rankings do time</h2>
+      <select id="rankings-team-select" class="mini-team-select"></select>
       <div class="row" id="ranking-filters" style="margin-bottom:16px;"></div>
       <div class="table-wrap">
         <table id="rankings-table">
@@ -717,6 +723,7 @@ footer{
     <div class="panel">
       <span class="eyebrow">Treino / Rachão</span>
       <h2>Sorteio de times</h2>
+      <select id="draw-team-select" class="mini-team-select"></select>
       <div class="row">
         <div class="field" style="margin:0;min-width:140px;">
           <label>Número de times</label>
@@ -725,8 +732,17 @@ footer{
         <div class="field" style="margin:0;display:flex;align-items:flex-end;gap:8px;">
           <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
             <input type="checkbox" id="draw-balance" style="width:auto;" checked>
-            Equilibrar por desempenho (PPG)
+            Equilibrar por desempenho
           </label>
+        </div>
+        <div class="field" style="margin:0;min-width:170px;">
+          <label>Estatística</label>
+          <select id="draw-stat">
+            <option value="ppg">Pontos (PPG)</option>
+            <option value="rpg">Rebotes (RPG)</option>
+            <option value="apg">Assistências (APG)</option>
+            <option value="spg">Roubos (SPG)</option>
+          </select>
         </div>
         <button class="btn primary" id="btn-draw" style="align-self:flex-end;">Sortear times</button>
       </div>

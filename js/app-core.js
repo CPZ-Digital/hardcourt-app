@@ -208,13 +208,31 @@
     switchView('rankings');
   }
 
+  // seletor de time duplicado nas abas Jogos/Rankings/Sorteio, além do Elenco — pra quem tem mais
+  // de um time cadastrado não precisar voltar no Elenco toda vez só pra trocar qual time tá ativo.
+  // Todos ficam sincronizados: mudar em qualquer um atualiza currentTeamId igual o de sempre.
+  const miniTeamSelectIds = ['games-team-select','rankings-team-select','draw-team-select'];
   function renderTeamSelect(){
     const teams = Object.values(db.teams);
-    teamSelect.innerHTML = teams.length
+    const optionsHtml = teams.length
       ? teams.map(t=>`<option value="${t.id}" ${t.id===currentTeamId?'selected':''}>${escapeHtml(t.name)}</option>`).join('')
       : `<option value="">— nenhum time —</option>`;
+    teamSelect.innerHTML = optionsHtml;
+    miniTeamSelectIds.forEach(id=>{
+      const sel = document.getElementById(id);
+      if(sel) sel.innerHTML = optionsHtml;
+    });
     document.getElementById('team-tag').textContent = team() ? '— ' + team().name : '— sem time selecionado';
   }
+  miniTeamSelectIds.forEach(id=>{
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    sel.addEventListener('change', ()=>{
+      currentTeamId = sel.value || null;
+      db.lastTeam = currentTeamId;
+      save(); renderAll();
+    });
+  });
 
   // ---------- ROSTER ----------
   document.getElementById('btn-add-player').addEventListener('click', ()=>{
