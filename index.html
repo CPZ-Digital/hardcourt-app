@@ -217,7 +217,7 @@ nav button.active{
 /* .panel + .panel dá margin-top:16px pensando em painéis empilhados — mas aqui os dois .panel
    (time A e time B) ficam lado a lado no grid, e o segundo continua sendo "irmão seguinte" no
    HTML, então herdava esse espaçamento e ficava mais baixo que o primeiro. Zera só aqui. */
-.match-columns > .panel{ margin-top:0; }
+.match-columns > .panel{ margin-top:0 !important; }
 
 .sync-toast{
   position:fixed; left:50%; bottom:20px; transform:translate(-50%,12px);
